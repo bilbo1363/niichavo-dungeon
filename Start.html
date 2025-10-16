@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Подземелье</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+        #gameCanvas, #infoCanvas {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="startMenuCanvas"></canvas>
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="infoCanvas"></canvas>
+
+    <script src="game.js"></script>
+    <script>
+        // Убедимся, что DOM полностью загружен перед инициализацией игры
+        document.addEventListener('DOMContentLoaded', function() {
+            initGame();
+        });
+    </script>
+</body>
+</html>

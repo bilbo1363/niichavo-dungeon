@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игра "В подземелье"</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+			}
+        #gameCanvas, #infoCanvas {
+            display: none;
+                }
+    </style>
+</head>
+<body>
+    <canvas id="startMenuCanvas"></canvas>
+    <canvas id="gameCanvas"></canvas>
+    <canvas id="infoCanvas"></canvas>
+
+    <!-- Кнопки стартового меню внутри стартового поля -->
+    <div id="menuButtons" style="display: none; position: absolute;">
+        <button id="newGameButton" class="menu-button">Старт новой игры</button>
+        <button id="loadGameButton" class="menu-button">Загрузка предыдущих сохранений</button>
+        <button id="settingsButton" class="menu-button">Настройки игры</button>
+        <button id="profileButton" class="menu-button">Профиль Игрока</button>
+        <button id="exitButton" class="menu-button">Выход из игры</button>
+        <button id="continueButton" class="menu-button" style="display: none;">Продолжить сохраненную игру</button>
+    </div>
+
+    <script type="module">
+        import { initGame } from './game.js';
+        window.addEventListener('load', initGame);
+    </script>
+</body>

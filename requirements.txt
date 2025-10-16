@@ -1,0 +1,10 @@
+# Game dependencies
+pygame==2.5.2
+numpy==1.26.0
+# noise==1.2.2  # Требует C++ компилятор, установим позже или используем альтернативу
+pyyaml==6.0.1
+pydantic==2.5.0
+pillow==10.1.0
+pytest==7.4.3
+black==23.12.0
+pyinstaller==6.3.0
