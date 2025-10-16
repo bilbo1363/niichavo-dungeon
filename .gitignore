@@ -53,3 +53,6 @@ htmlcov/
 *.spec
 build/
 dist/
+
+# Old documentation
+Документация/
