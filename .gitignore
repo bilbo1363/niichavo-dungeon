@@ -56,3 +56,7 @@ dist/
 
 # Old documentation
 Документация/
+
+# Generated audio files (optional - uncomment to ignore)
+# assets/sounds/
+# assets/music/

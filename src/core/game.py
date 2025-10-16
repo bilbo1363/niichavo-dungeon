@@ -73,19 +73,23 @@ class Game:
         self.save_manager = SaveManager()
         self.serializer = GameStateSerializer()
         
-        # UI
-        self.inventory_ui = InventoryUI(width, height)
-        self.storage_ui = StorageUI(width, height)
-        self.riddle_ui = RiddleUI(width, height)
-        self.message_log = MessageLog(width, height)
+        # UI (используем self.width и self.height - они уже учитывают fullscreen)
+        self.inventory_ui = InventoryUI(self.width, self.height)
+        self.storage_ui = StorageUI(self.width, self.height)
+        self.riddle_ui = RiddleUI(self.width, self.height)
+        self.message_log = MessageLog(self.width, self.height)
         
         from ..ui.settings_ui import SettingsUI
-        self.settings_ui = SettingsUI(width, height)
+        self.settings_ui = SettingsUI(self.width, self.height)
+        
+        from ..ui.splash_screen import SplashScreen
+        self.splash_screen = SplashScreen(self.width, self.height)
         
         self.show_inventory_ui = False
         self.show_storage_ui = False
         self.show_riddle_ui = False
         self.show_settings_ui = False
+        self.show_splash = True  # Показываем заставку при запуске
         self.current_riddle = None
         
         # Боевая система
@@ -182,6 +186,23 @@ class Game:
         while self.running:
             # Delta time
             dt = self.clock.tick(self.fps) / 1000.0
+            
+            # Если показываем заставку - только её обрабатываем
+            if self.show_splash:
+                events = pygame.event.get()
+                for event in events:
+                    if event.type == pygame.QUIT:
+                        self.running = False
+                    self.splash_screen.handle_input(event)
+                
+                # Обновляем заставку
+                if self.splash_screen.update(dt):
+                    self.show_splash = False
+                
+                # Рисуем заставку
+                self.splash_screen.render(self.screen)
+                pygame.display.flip()
+                continue
             
             # Обработка событий
             self._handle_events()
@@ -517,6 +538,10 @@ class Game:
         
         # Генерируем новый уровень (загадки восстанавливаются автоматически в level_generator)
         self.current_level = self.level_generator.generate(floor)
+        
+        # Меняем музыку в зависимости от биома
+        biome = self._get_biome_for_floor(floor)
+        self.sound_manager.start_music(biome)
         
         # Телепортируем игрока
         if going_down:  # Спускаемся вниз
@@ -1783,6 +1808,25 @@ class Game:
     def _on_settings_back(self) -> None:
         """Закрытие меню настроек"""
         self.show_settings_ui = False
+    
+    def _get_biome_for_floor(self, floor: int) -> str:
+        """
+        Определить биом для этажа
+        
+        Args:
+            floor: Номер этажа (1-20)
+            
+        Returns:
+            Название биома для музыки
+        """
+        if floor <= 5:
+            return "catacombs"  # Древние катакомбы
+        elif floor <= 10:
+            return "flooded"  # Затопленные залы
+        elif floor <= 15:
+            return "fire"  # Огненные пещеры
+        else:
+            return "abyss"  # Бездна
 
 
 if __name__ == "__main__":

@@ -3,6 +3,8 @@
 """
 import pygame
 import numpy as np
+import os
+from pathlib import Path
 from typing import Dict, Optional
 
 
@@ -20,10 +22,85 @@ class SoundManager:
         self.sfx_volume = 0.5
         self.music_volume = 0.3
         
-        # Генерируем звуки
-        self._generate_sounds()
+        # Пути к ресурсам
+        self.sounds_dir = Path("assets/sounds")
+        self.music_dir = Path("assets/music")
+        
+        # Текущий биом для музыки
+        self.current_biome = None
+        self.current_music = None
+        
+        # Загружаем или генерируем звуки
+        self._load_or_generate_sounds()
         
         print("🔊 Звуковая система инициализирована")
+    
+    def _load_or_generate_sounds(self) -> None:
+        """Загрузка звуков из файлов или генерация если файлов нет"""
+        sound_files = {
+            "step": "step.wav",
+            "chest_open": "chest_open.wav",
+            "pickup": "pickup.wav",
+            "damage": "damage.wav",
+            "heal": "heal.wav",
+            "discover": "discover.wav",
+            "trap": "trap.wav",
+        }
+        
+        # Проверяем наличие папки со звуками
+        if self.sounds_dir.exists():
+            # Пытаемся загрузить из файлов
+            loaded_count = 0
+            for sound_name, filename in sound_files.items():
+                filepath = self.sounds_dir / filename
+                if filepath.exists():
+                    try:
+                        self.sounds[sound_name] = pygame.mixer.Sound(str(filepath))
+                        loaded_count += 1
+                    except Exception as e:
+                        print(f"⚠️ Ошибка загрузки {filename}: {e}")
+                        # Генерируем если не удалось загрузить
+                        self.sounds[sound_name] = self._generate_sound(sound_name)
+                else:
+                    # Генерируем если файл не найден
+                    self.sounds[sound_name] = self._generate_sound(sound_name)
+            
+            if loaded_count > 0:
+                print(f"   📁 Загружено звуков из файлов: {loaded_count}/{len(sound_files)}")
+            if loaded_count < len(sound_files):
+                print(f"   🎵 Сгенерировано процедурно: {len(sound_files) - loaded_count}/{len(sound_files)}")
+        else:
+            # Папки нет - генерируем все
+            print("   ⚠️ Папка assets/sounds не найдена")
+            print("   🎵 Генерация звуков процедурно...")
+            self._generate_sounds()
+    
+    def _generate_sound(self, sound_name: str) -> pygame.mixer.Sound:
+        """
+        Генерация конкретного звука
+        
+        Args:
+            sound_name: Название звука
+            
+        Returns:
+            Сгенерированный звук
+        """
+        generators = {
+            "step": self._generate_step_sound,
+            "chest_open": self._generate_chest_sound,
+            "pickup": self._generate_pickup_sound,
+            "damage": self._generate_damage_sound,
+            "heal": self._generate_heal_sound,
+            "discover": self._generate_discover_sound,
+            "trap": self._generate_trap_sound,
+        }
+        
+        generator = generators.get(sound_name)
+        if generator:
+            return generator()
+        else:
+            # Возвращаем пустой звук если генератор не найден
+            return pygame.mixer.Sound(buffer=np.zeros((100, 2), dtype=np.int16))
     
     def _generate_sounds(self) -> None:
         """Генерация 8-битных звуков"""
@@ -241,14 +318,63 @@ class SoundManager:
             sound.set_volume(self.sfx_volume)
             sound.play()
     
-    def start_music(self) -> None:
-        """Запустить фоновую музыку"""
-        if not self.music_enabled or self.music_playing:
+    def start_music(self, biome: str = "main") -> None:
+        """
+        Запустить фоновую музыку
+        
+        Args:
+            biome: Биом для музыки (main, catacombs, flooded, fire, abyss)
+        """
+        if not self.music_enabled:
             return
         
-        # Генерируем простую мелодию
-        self._generate_and_play_music()
+        # Если уже играет та же музыка - не перезапускаем
+        if self.music_playing and self.current_biome == biome:
+            return
+        
+        # Останавливаем текущую музыку
+        if self.music_playing:
+            self.stop_music()
+        
+        # Загружаем или генерируем музыку для биома
+        self._load_and_play_music(biome)
         self.music_playing = True
+        self.current_biome = biome
+    
+    def _load_and_play_music(self, biome: str) -> None:
+        """
+        Загрузка и воспроизведение музыки для биома
+        
+        Args:
+            biome: Биом (main, catacombs, flooded, fire, abyss)
+        """
+        # Соответствие биомов файлам
+        music_files = {
+            "main": "theme_main.wav",
+            "catacombs": "theme_catacombs.wav",
+            "flooded": "theme_flooded.wav",
+            "fire": "theme_fire.wav",
+            "abyss": "theme_abyss.wav",
+        }
+        
+        filename = music_files.get(biome, "theme_main.wav")
+        filepath = self.music_dir / filename
+        
+        # Пытаемся загрузить из файла
+        if filepath.exists():
+            try:
+                # Используем pygame.mixer.music для фоновой музыки
+                pygame.mixer.music.load(str(filepath))
+                pygame.mixer.music.set_volume(self.music_volume)
+                pygame.mixer.music.play(loops=-1)  # Бесконечный цикл
+                print(f"   🎵 Музыка: {filename}")
+                return
+            except Exception as e:
+                print(f"⚠️ Ошибка загрузки музыки {filename}: {e}")
+        
+        # Если не удалось загрузить - генерируем
+        print(f"   🎵 Генерация музыки для биома: {biome}")
+        self._generate_and_play_music()
     
     def _generate_and_play_music(self) -> None:
         """Генерация и воспроизведение фоновой музыки"""
@@ -294,8 +420,9 @@ class SoundManager:
     
     def stop_music(self) -> None:
         """Остановить музыку"""
-        pygame.mixer.stop()
+        pygame.mixer.music.stop()
         self.music_playing = False
+        self.current_biome = None
     
     def toggle_sfx(self) -> None:
         """Переключить звуковые эффекты"""
