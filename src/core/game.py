@@ -207,8 +207,8 @@ class Game:
             # Обработка событий
             self._handle_events()
             
-            # Обновление
-            if not self.show_main_menu:
+            # Обновление (только если не открыт UI)
+            if not self.show_main_menu and not self._any_ui_open():
                 self._update(dt)
                 # Трекаем время игры
                 if self.current_profile:
@@ -1828,6 +1828,22 @@ class Game:
             return "fire"  # Огненные пещеры
         else:
             return "abyss"  # Бездна
+    
+    def _any_ui_open(self) -> bool:
+        """
+        Проверка открыт ли какой-либо UI
+        
+        Returns:
+            True если открыт любой UI (инвентарь, диалог, настройки и т.д.)
+        """
+        return (
+            self.show_inventory_ui or
+            self.show_storage_ui or
+            self.show_riddle_ui or
+            self.show_dialogue or
+            self.show_settings_ui or
+            self.show_exit_dialog
+        )
 
 
 if __name__ == "__main__":
