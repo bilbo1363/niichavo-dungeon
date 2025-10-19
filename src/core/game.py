@@ -168,6 +168,10 @@ class Game:
         # Флаг для предотвращения повторных переходов
         self.can_transition = True
         
+        # Система записок НИИЧАВО
+        self.current_note = None  # Текущая показываемая записка
+        self.show_note = False  # Показывать ли записку
+        
         # Система движения
         self.move_timer = 0.0
         self.move_delay = 0.08  # Задержка между шагами (секунды) - комфортная скорость
@@ -245,6 +249,16 @@ class Game:
                 if event.type == pygame.QUIT:
                     self.running = False
                 self.settings_ui.handle_input(event)
+            return
+        
+        # Если показана записка НИИЧАВО - обрабатываем её закрытие
+        if self.show_note:
+            for event in events:
+                if event.type == pygame.QUIT:
+                    self.running = False
+                if event.type == pygame.KEYDOWN:
+                    if event.key in [pygame.K_SPACE, pygame.K_RETURN, pygame.K_ESCAPE]:
+                        self.show_note = False
             return
         
         # Если показано главное меню - обрабатываем его ввод
@@ -556,6 +570,11 @@ class Game:
         # Меняем музыку в зависимости от биома
         biome = self._get_biome_for_floor(floor)
         self.sound_manager.start_music(biome)
+        
+        # Показываем записку НИИЧАВО для этого этажа
+        from src.world.niichavo_notes import NiichavoNoteManager
+        self.current_note = NiichavoNoteManager.get_random_note_for_floor(floor)
+        self.show_note = True
         
         # Телепортируем игрока
         if going_down:  # Спускаемся вниз
@@ -1333,6 +1352,8 @@ class Game:
         # GUI (поверх всего)
         if self.player_dead:
             self._render_death_screen()
+        elif self.show_note and self.current_note:
+            self._render_note()
         elif self.show_exit_dialog:
             self._render_exit_dialog()
         elif self.show_dialogue and self.current_dialogue:
@@ -1395,8 +1416,13 @@ class Game:
         # Локация
         if self.current_location == "attic":
             location_text = "Чердак"
+            biome_text = ""
         else:
             location_text = f"Этаж: {self.current_floor}"
+            # Получаем название биома
+            from src.world.biomes import BiomeManager
+            biome = BiomeManager.get_biome_for_floor(self.current_floor)
+            biome_text = biome.name
             
         floor_text = font.render(
             location_text,
@@ -1404,6 +1430,16 @@ class Game:
             (255, 255, 255)
         )
         self.screen.blit(floor_text, (10, 110))
+        
+        # Название биома (если не на чердаке)
+        if biome_text:
+            biome_font = pygame.font.Font(None, 20)
+            biome_render = biome_font.render(
+                f"📍 {biome_text}",
+                True,
+                (150, 200, 255)  # Голубоватый цвет
+            )
+            self.screen.blit(biome_render, (10, 135))
         
         # Подсказка
         hint_font = pygame.font.Font(None, 20)
@@ -1508,6 +1544,56 @@ class Game:
         
         hint = hint_font.render("Y - Да, выйти | N/ESC - Нет, продолжить", True, (200, 200, 200))
         hint_rect = hint.get_rect(center=(self.width // 2, box_y + 220))
+        self.screen.blit(hint, hint_rect)
+    
+    def _render_note(self) -> None:
+        """Отрисовка записки НИИЧАВО"""
+        # Затемнение фона
+        overlay = pygame.Surface((self.width, self.height))
+        overlay.set_alpha(180)
+        overlay.fill((0, 0, 0))
+        self.screen.blit(overlay, (0, 0))
+        
+        # Размеры окна записки
+        box_width = min(700, self.width - 100)
+        box_height = min(500, self.height - 100)
+        box_x = (self.width - box_width) // 2
+        box_y = (self.height - box_height) // 2
+        
+        # Фон записки (старая бумага)
+        pygame.draw.rect(self.screen, (240, 230, 200), (box_x, box_y, box_width, box_height))
+        pygame.draw.rect(self.screen, (150, 120, 80), (box_x, box_y, box_width, box_height), 3)
+        
+        # Заголовок
+        title_font = pygame.font.Font(None, 42)
+        title = title_font.render(f"📜 {self.current_note.title}", True, (80, 50, 20))
+        title_rect = title.get_rect(center=(self.width // 2, box_y + 50))
+        self.screen.blit(title, title_rect)
+        
+        # Разделитель
+        pygame.draw.line(
+            self.screen,
+            (150, 120, 80),
+            (box_x + 50, box_y + 85),
+            (box_x + box_width - 50, box_y + 85),
+            2
+        )
+        
+        # Текст записки (многострочный)
+        text_font = pygame.font.Font(None, 28)
+        lines = self.current_note.text.split('\n')
+        y_offset = box_y + 120
+        
+        for line in lines:
+            text = text_font.render(line, True, (60, 40, 10))
+            text_rect = text.get_rect(center=(self.width // 2, y_offset))
+            self.screen.blit(text, text_rect)
+            y_offset += 35
+        
+        # Подсказка
+        hint_font = pygame.font.Font(None, 24)
+        hint = hint_font.render("Нажмите ПРОБЕЛ, ENTER или ESC чтобы закрыть", True, (120, 100, 60))
+        hint_rect = hint.get_rect(center=(self.width // 2, box_y + box_height - 30))
         self.screen.blit(hint, hint_rect)
     
     def _render_death_screen(self) -> None:
@@ -1858,7 +1944,8 @@ class Game:
             self.show_riddle_ui or
             self.show_dialogue or
             self.show_settings_ui or
-            self.show_exit_dialog
+            self.show_exit_dialog or
+            self.show_note
         )
     
     def _update_fps_counter(self, dt: float) -> None:
