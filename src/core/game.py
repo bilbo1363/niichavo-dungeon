@@ -226,6 +226,10 @@ class Game:
         """Обработка событий"""
         events = pygame.event.get()
         
+        # ВАЖНО: Обновляем менеджер ввода ПЕРЕД всеми проверками
+        # Это предотвращает "залипание" клавиш при открытии/закрытии UI
+        self.input_manager.update(events)
+        
         # Если открыты настройки - обрабатываем ТОЛЬКО их ввод (приоритет!)
         if self.show_settings_ui:
             for event in events:
@@ -353,9 +357,6 @@ class Game:
                 # Взаимодействие с хранилищем (T)
                 if event.key == pygame.K_t:
                     self._open_storage_ui()
-                    
-        # Обновляем менеджер ввода
-        self.input_manager.update(events)
                     
     def _update(self, dt: float) -> None:
         """
