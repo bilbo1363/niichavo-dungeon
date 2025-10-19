@@ -63,6 +63,12 @@ class Game:
         self.running = False
         self.fps = 60
         
+        # FPS счётчик
+        self.show_fps = False  # Показывать ли FPS (F3 для переключения)
+        self.fps_update_time = 0.0  # Время с последнего обновления FPS
+        self.fps_frames = 0  # Количество кадров с последнего обновления
+        self.current_fps = 0  # Текущий FPS для отображения
+        
         # Создаём генератор уровней
         self.level_generator = LevelGenerator(game_id="game_001")
         
@@ -186,6 +192,9 @@ class Game:
         while self.running:
             # Delta time
             dt = self.clock.tick(self.fps) / 1000.0
+            
+            # Обновляем FPS счётчик
+            self._update_fps_counter(dt)
             
             # Если показываем заставку - только её обрабатываем
             if self.show_splash:
@@ -330,6 +339,10 @@ class Game:
                 # Переключение полноэкранного режима (F11)
                 if event.key == pygame.K_F11:
                     self._toggle_fullscreen()
+                
+                # Переключение отображения FPS (F3)
+                if event.key == pygame.K_F3:
+                    self.show_fps = not self.show_fps
                     
                 # Взаимодействие (E) - предметы, загадки, записки
                 if event.key == pygame.K_e:
@@ -1331,6 +1344,9 @@ class Game:
         elif self.show_riddle_ui and self.current_riddle:
             self.riddle_ui.render(self.screen, self.current_riddle)
         
+        # FPS счётчик (поверх всего)
+        self._render_fps()
+        
         # Обновление экрана
         pygame.display.flip()
         
@@ -1844,6 +1860,48 @@ class Game:
             self.show_settings_ui or
             self.show_exit_dialog
         )
+    
+    def _update_fps_counter(self, dt: float) -> None:
+        """
+        Обновление счётчика FPS
+        
+        Args:
+            dt: Delta time
+        """
+        self.fps_update_time += dt
+        self.fps_frames += 1
+        
+        # Обновляем FPS каждые 0.5 секунды
+        if self.fps_update_time >= 0.5:
+            self.current_fps = int(self.fps_frames / self.fps_update_time)
+            self.fps_update_time = 0.0
+            self.fps_frames = 0
+    
+    def _render_fps(self) -> None:
+        """Отрисовка FPS счётчика"""
+        if not self.show_fps:
+            return
+        
+        # Создаём полупрозрачный фон
+        fps_bg = pygame.Surface((100, 30))
+        fps_bg.set_alpha(180)
+        fps_bg.fill((0, 0, 0))
+        
+        # Рисуем фон в правом верхнем углу
+        self.screen.blit(fps_bg, (self.width - 110, 10))
+        
+        # Выбираем цвет в зависимости от FPS
+        if self.current_fps >= 55:
+            color = (0, 255, 0)  # Зелёный - отлично
+        elif self.current_fps >= 30:
+            color = (255, 255, 0)  # Жёлтый - нормально
+        else:
+            color = (255, 0, 0)  # Красный - плохо
+        
+        # Рисуем текст FPS
+        font = pygame.font.Font(None, 24)
+        fps_text = font.render(f"FPS: {self.current_fps}", True, color)
+        self.screen.blit(fps_text, (self.width - 100, 15))
 
 
 if __name__ == "__main__":
