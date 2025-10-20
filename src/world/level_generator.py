@@ -179,6 +179,21 @@ class LevelGenerator:
         level.notes = notes
         print(f"   📜 Записок: {len(notes)}")
         
+        # Генерируем интерактивные объекты (доски и кости)
+        from .interactive_objects import InteractiveObjectManager
+        walkable_tiles = []
+        for room in rooms:
+            for x in range(room.x1 + 1, room.x2):
+                for y in range(room.y1 + 1, room.y2):
+                    if level.tiles[y, x] == Level.TILE_FLOOR:
+                        walkable_tiles.append((x, y))
+        
+        interactive_objects = InteractiveObjectManager.generate_objects_for_floor(
+            floor, width, height, walkable_tiles
+        )
+        level.interactive_objects = interactive_objects
+        print(f"   📋 Интерактивных объектов: {len(interactive_objects)}")
+        
         # Добавляем декорации биома
         BiomeDecorator.add_biome_decorations(level, rooms, floor)
         print(f"   🎨 Декорации биома добавлены")

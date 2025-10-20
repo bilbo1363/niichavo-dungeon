@@ -571,11 +571,6 @@ class Game:
         biome = self._get_biome_for_floor(floor)
         self.sound_manager.start_music(biome)
         
-        # Показываем записку НИИЧАВО для этого этажа
-        from src.world.niichavo_notes import NiichavoNoteManager
-        self.current_note = NiichavoNoteManager.get_random_note_for_floor(floor)
-        self.show_note = True
-        
         # Телепортируем игрока
         if going_down:  # Спускаемся вниз
             # Появляемся на входе (зелёный круг) нового этажа
@@ -852,11 +847,15 @@ class Game:
         self.player.inventory.print_inventory()
     
     def _handle_e_interaction(self) -> None:
-        """Обработка взаимодействия по клавише E (приоритет: контейнеры -> предметы -> загадки -> записки)"""
+        """Обработка взаимодействия по клавише E (приоритет: интерактивные объекты -> контейнеры -> предметы -> загадки -> записки)"""
         if self.current_location == "attic":
             return
         
-        # 1. Проверяем контейнеры (высший приоритет)
+        # 1. Проверяем интерактивные объекты (доски и кости) - высший приоритет
+        if self._check_interactive_object():
+            return
+        
+        # 2. Проверяем контейнеры
         if self._check_container_opening():
             return
         
@@ -872,6 +871,50 @@ class Game:
         # 4. Проверяем записки
         self._check_note_reading()
         
+    def _check_interactive_object(self) -> bool:
+        """
+        Проверка взаимодействия с интерактивными объектами (доски, кости)
+        
+        Returns:
+            True если было взаимодействие
+        """
+        # Ищем объект на позиции игрока
+        for obj in self.current_level.interactive_objects:
+            if obj.x == self.player.x and obj.y == self.player.y:
+                # Взаимодействуем с объектом
+                result = obj.interact()
+                
+                # Показываем записку
+                self.current_note = type('Note', (), {
+                    'title': result['note_title'],
+                    'text': result['note_text']
+                })()
+                self.show_note = True
+                
+                # Если это кости - выдаём лут
+                if result['type'] == 'skeleton' and result['loot'] and not result['already_used']:
+                    self.sound_manager.play_sound("pickup")
+                    self.message_log.success(f"☠️ Обыскали останки путешественника")
+                    
+                    for loot_item in result['loot']:
+                        self.message_log.item(f"  + {loot_item}")
+                        print(f"  + {loot_item}")
+                    
+                    # Эффект частиц
+                    self.particle_system.emit(
+                        self.player.x * 32 + 16,
+                        self.player.y * 32 + 16,
+                        count=15,
+                        effect_type="sparkle"
+                    )
+                elif result['type'] == 'notice_board':
+                    self.sound_manager.play_sound("page_turn")
+                    self.message_log.info(f"📋 Прочитали записку на доске")
+                
+                return True
+        
+        return False
+    
     def _check_container_opening(self) -> bool:
         """
         Проверка открытия контейнера
@@ -1457,6 +1500,18 @@ class Game:
             (150, 150, 150)
         )
         self.screen.blit(hint2_text, (10, self.height - 50))
+        
+        # Подсказка для интерактивных объектов
+        if self.current_location != "attic":
+            for obj in self.current_level.interactive_objects:
+                if obj.x == self.player.x and obj.y == self.player.y:
+                    hint_text = hint_font.render(
+                        obj.get_interaction_hint(),
+                        True,
+                        (255, 255, 100)  # Яркий жёлтый
+                    )
+                    self.screen.blit(hint_text, (10, self.height - 70))
+                    break
         
         # Тестовая подсказка
         hint3_text = hint_font.render(

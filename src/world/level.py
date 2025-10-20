@@ -76,6 +76,9 @@ class Level:
         # Контейнеры (будут добавлены генератором)
         self.containers = []
         
+        # Интерактивные объекты (доски с записками, кости путешественников)
+        self.interactive_objects = []
+        
         print(f"🗺️  Уровень создан: {width}x{height}")
         
     def _generate_test_level(self) -> None:
@@ -253,6 +256,9 @@ class Level:
         
         # Отрисовываем контейнеры (с проверкой fog of war)
         self._render_containers(screen, camera_x, camera_y)
+        
+        # Отрисовываем интерактивные объекты (доски и кости)
+        self._render_interactive_objects(screen, camera_x, camera_y)
         
         # Отрисовываем руны (с проверкой fog of war)
         self.rune_manager.render(screen, camera_x, camera_y, self.fog_of_war)
@@ -497,6 +503,38 @@ class Level:
         except ImportError:
             # Если модуль биомов не найден, используем стандартные цвета
             pass
+    
+    def _render_interactive_objects(self, screen: pygame.Surface, camera_x: int, camera_y: int) -> None:
+        """
+        Отрисовка интерактивных объектов (доски и кости)
+        
+        Args:
+            screen: Поверхность для отрисовки
+            camera_x: Смещение камеры по X
+            camera_y: Смещение камеры по Y
+        """
+        for obj in self.interactive_objects:
+            # Проверяем видимость в fog of war
+            if not self.fog_of_war.is_visible(obj.x, obj.y):
+                continue
+            
+            screen_x = obj.x * self.tile_size - camera_x
+            screen_y = obj.y * self.tile_size - camera_y
+            
+            # Рисуем фон объекта
+            color = obj.get_color()
+            pygame.draw.rect(
+                screen,
+                color,
+                (screen_x + 4, screen_y + 4, self.tile_size - 8, self.tile_size - 8)
+            )
+            
+            # Рисуем символ объекта
+            font = pygame.font.Font(None, 28)
+            symbol = obj.get_display_char()
+            text = font.render(symbol, True, (255, 255, 255))
+            text_rect = text.get_rect(center=(screen_x + self.tile_size // 2, screen_y + self.tile_size // 2))
+            screen.blit(text, text_rect)
 
 
 if __name__ == "__main__":
