@@ -183,8 +183,8 @@ class LevelGenerator:
         from .interactive_objects import InteractiveObjectManager
         walkable_tiles = []
         for room in rooms:
-            for x in range(room.x1 + 1, room.x2):
-                for y in range(room.y1 + 1, room.y2):
+            for x in range(room.x + 1, room.x + room.width - 1):
+                for y in range(room.y + 1, room.y + room.height - 1):
                     if level.tiles[y, x] == Level.TILE_FLOOR:
                         walkable_tiles.append((x, y))
         
