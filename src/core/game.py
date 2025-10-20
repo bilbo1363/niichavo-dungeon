@@ -190,8 +190,11 @@ class Game:
         print("\n🎮 Игра запущена!")
         print("Нажмите ESC для выхода\n")
         
-        # Запускаем фоновую музыку
-        self.sound_manager.start_music()
+        # Запускаем фоновую музыку (тема чердака если на чердаке)
+        if self.current_location == "attic":
+            self.sound_manager.start_music("attic")
+        else:
+            self.sound_manager.start_music()
         
         while self.running:
             # Delta time
@@ -590,6 +593,9 @@ class Game:
         self.current_location = "attic"
         self.current_floor = 0
         self.current_level = None
+        
+        # Меняем музыку на тему чердака
+        self.sound_manager.start_music("attic")
         
         # Восстанавливаем выносливость при возвращении на базу
         old_endurance = self.player.stats.endurance

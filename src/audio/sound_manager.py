@@ -323,7 +323,7 @@ class SoundManager:
         Запустить фоновую музыку
         
         Args:
-            biome: Биом для музыки (main, catacombs, flooded, fire, abyss)
+            biome: Биом для музыки (attic, main, catacombs, flooded, fire, abyss)
         """
         if not self.music_enabled:
             return
@@ -346,10 +346,11 @@ class SoundManager:
         Загрузка и воспроизведение музыки для биома
         
         Args:
-            biome: Биом (main, catacombs, flooded, fire, abyss)
+            biome: Биом (attic, main, catacombs, flooded, fire, abyss)
         """
         # Соответствие биомов файлам
         music_files = {
+            "attic": "theme_attic.wav",
             "main": "theme_main.wav",
             "catacombs": "theme_catacombs.wav",
             "flooded": "theme_flooded.wav",
