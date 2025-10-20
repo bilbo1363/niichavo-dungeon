@@ -513,6 +513,10 @@ class Level:
             camera_x: Смещение камеры по X
             camera_y: Смещение камеры по Y
         """
+        # Получаем менеджер спрайтов
+        from ..graphics.sprite_manager import SpriteManager
+        sprite_manager = SpriteManager()
+        
         for obj in self.interactive_objects:
             # Проверяем видимость в fog of war
             if not self.fog_of_war.is_visible(obj.x, obj.y):
@@ -521,20 +525,26 @@ class Level:
             screen_x = obj.x * self.tile_size - camera_x
             screen_y = obj.y * self.tile_size - camera_y
             
-            # Рисуем фон объекта
-            color = obj.get_color()
-            pygame.draw.rect(
-                screen,
-                color,
-                (screen_x + 4, screen_y + 4, self.tile_size - 8, self.tile_size - 8)
-            )
+            # Получаем спрайт объекта
+            sprite = obj.get_sprite(sprite_manager)
             
-            # Рисуем символ объекта
-            font = pygame.font.Font(None, 28)
-            symbol = obj.get_display_char()
-            text = font.render(symbol, True, (255, 255, 255))
-            text_rect = text.get_rect(center=(screen_x + self.tile_size // 2, screen_y + self.tile_size // 2))
-            screen.blit(text, text_rect)
+            if sprite:
+                # Рисуем спрайт
+                screen.blit(sprite, (screen_x, screen_y))
+            else:
+                # Fallback - рисуем как раньше
+                color = obj.get_color()
+                pygame.draw.rect(
+                    screen,
+                    color,
+                    (screen_x + 4, screen_y + 4, self.tile_size - 8, self.tile_size - 8)
+                )
+                
+                font = pygame.font.Font(None, 28)
+                symbol = obj.get_display_char()
+                text = font.render(symbol, True, (255, 255, 255))
+                text_rect = text.get_rect(center=(screen_x + self.tile_size // 2, screen_y + self.tile_size // 2))
+                screen.blit(text, text_rect)
 
 
 if __name__ == "__main__":

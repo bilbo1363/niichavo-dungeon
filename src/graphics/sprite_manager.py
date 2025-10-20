@@ -87,6 +87,9 @@ class SpriteManager:
         # Эффекты
         self._create_effect_sprites()
         
+        # Интерактивные объекты
+        self._create_interactive_object_sprites()
+        
     def _create_player_sprite(self) -> None:
         """Создать спрайт игрока"""
         size = 32
@@ -240,6 +243,79 @@ class SpriteManager:
         
         self.animations["effect_attack"] = Animation(frames, 0.05)
         self.animations["effect_attack"].loop = False
+    
+    def _create_interactive_object_sprites(self) -> None:
+        """Создать спрайты интерактивных объектов"""
+        size = 32
+        
+        # Доска с записками
+        board = pygame.Surface((size, size), pygame.SRCALPHA)
+        # Деревянная доска
+        pygame.draw.rect(board, (139, 90, 43), (4, 2, size - 8, size - 4))
+        pygame.draw.rect(board, (101, 67, 33), (4, 2, size - 8, size - 4), 2)
+        # Текстура дерева (горизонтальные линии)
+        for i in range(3):
+            y = 8 + i * 8
+            pygame.draw.line(board, (120, 80, 40), (6, y), (size - 6, y), 1)
+        # Гвозди по углам
+        for x, y in [(7, 5), (size - 7, 5), (7, size - 5), (size - 7, size - 5)]:
+            pygame.draw.circle(board, (80, 80, 80), (x, y), 2)
+        # Бумага на доске
+        pygame.draw.rect(board, (240, 230, 200), (8, 8, size - 16, size - 16))
+        pygame.draw.rect(board, (200, 190, 160), (8, 8, size - 16, size - 16), 1)
+        # Линии текста
+        for i in range(3):
+            y = 12 + i * 4
+            pygame.draw.line(board, (100, 100, 100), (10, y), (size - 10, y), 1)
+        
+        self.sprites["interactive_notice_board"] = board
+        
+        # Кости с лутом (не обыскано)
+        skeleton = pygame.Surface((size, size), pygame.SRCALPHA)
+        # Череп
+        pygame.draw.circle(skeleton, (240, 230, 210), (size // 2, size // 2 - 4), 8)
+        # Глазницы
+        pygame.draw.circle(skeleton, (50, 50, 50), (size // 2 - 3, size // 2 - 6), 2)
+        pygame.draw.circle(skeleton, (50, 50, 50), (size // 2 + 3, size // 2 - 6), 2)
+        # Нос
+        pygame.draw.polygon(skeleton, (50, 50, 50), 
+                          [(size // 2, size // 2 - 2), 
+                           (size // 2 - 2, size // 2 + 1), 
+                           (size // 2 + 2, size // 2 + 1)])
+        # Челюсть
+        pygame.draw.arc(skeleton, (50, 50, 50), 
+                       (size // 2 - 6, size // 2 - 2, 12, 8), 
+                       3.14, 6.28, 2)
+        # Кости рядом
+        pygame.draw.line(skeleton, (240, 230, 210), (8, size - 8), (14, size - 12), 3)
+        pygame.draw.line(skeleton, (240, 230, 210), (size - 8, size - 8), (size - 14, size - 12), 3)
+        # Блеск (есть лут!)
+        pygame.draw.circle(skeleton, (255, 255, 100), (size - 8, 8), 3)
+        pygame.draw.circle(skeleton, (255, 255, 200), (size - 8, 8), 2)
+        
+        self.sprites["interactive_skeleton"] = skeleton
+        
+        # Кости без лута (обыскано)
+        skeleton_empty = pygame.Surface((size, size), pygame.SRCALPHA)
+        # Череп (более тусклый)
+        pygame.draw.circle(skeleton_empty, (180, 180, 180), (size // 2, size // 2 - 4), 8)
+        # Глазницы
+        pygame.draw.circle(skeleton_empty, (80, 80, 80), (size // 2 - 3, size // 2 - 6), 2)
+        pygame.draw.circle(skeleton_empty, (80, 80, 80), (size // 2 + 3, size // 2 - 6), 2)
+        # Нос
+        pygame.draw.polygon(skeleton_empty, (80, 80, 80), 
+                          [(size // 2, size // 2 - 2), 
+                           (size // 2 - 2, size // 2 + 1), 
+                           (size // 2 + 2, size // 2 + 1)])
+        # Челюсть
+        pygame.draw.arc(skeleton_empty, (80, 80, 80), 
+                       (size // 2 - 6, size // 2 - 2, 12, 8), 
+                       3.14, 6.28, 2)
+        # Кости рядом (тусклые)
+        pygame.draw.line(skeleton_empty, (180, 180, 180), (8, size - 8), (14, size - 12), 3)
+        pygame.draw.line(skeleton_empty, (180, 180, 180), (size - 8, size - 8), (size - 14, size - 12), 3)
+        
+        self.sprites["interactive_skeleton_empty"] = skeleton_empty
         
     def get_sprite(self, name: str) -> Optional[pygame.Surface]:
         """

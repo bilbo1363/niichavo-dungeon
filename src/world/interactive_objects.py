@@ -77,6 +77,25 @@ class InteractiveObject:
                 return "E - Обыскать останки"
         return "E - Взаимодействовать"
     
+    def get_sprite(self, sprite_manager) -> Optional:
+        """
+        Получить спрайт объекта
+        
+        Args:
+            sprite_manager: Менеджер спрайтов
+            
+        Returns:
+            Спрайт или None
+        """
+        if self.obj_type == InteractiveObjectType.NOTICE_BOARD:
+            return sprite_manager.get_sprite("interactive_notice_board")
+        elif self.obj_type == InteractiveObjectType.SKELETON:
+            if self.interacted:
+                return sprite_manager.get_sprite("interactive_skeleton_empty")
+            else:
+                return sprite_manager.get_sprite("interactive_skeleton")
+        return None
+    
     def interact(self) -> dict:
         """
         Взаимодействие с объектом
