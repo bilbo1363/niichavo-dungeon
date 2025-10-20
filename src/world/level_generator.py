@@ -174,10 +174,11 @@ class LevelGenerator:
         loot_spots = LootTableGenerator.generate_loot_spots(rooms, floor, special_rooms)
         print(f"   🎁 Мест с лутом: {len(loot_spots)}")
         
-        # Генерируем записки и лор
-        notes = LoreGenerator.generate_notes_for_floor(rooms, floor, special_rooms)
-        level.notes = notes
-        print(f"   📜 Записок: {len(notes)}")
+        # Генерируем записки и лор (ОТКЛЮЧЕНО - заменено на доски и кости)
+        # notes = LoreGenerator.generate_notes_for_floor(rooms, floor, special_rooms)
+        # level.notes = notes
+        level.notes = []  # Пустой список - записки теперь только на досках и костях
+        # print(f"   📜 Записок: {len(notes)}")
         
         # Генерируем интерактивные объекты (доски и кости)
         from .interactive_objects import InteractiveObjectManager
@@ -192,7 +193,11 @@ class LevelGenerator:
             floor, width, height, walkable_tiles
         )
         level.interactive_objects = interactive_objects
-        print(f"   📋 Интерактивных объектов: {len(interactive_objects)}")
+        
+        # Подсчитываем типы объектов
+        num_boards = sum(1 for obj in interactive_objects if obj.obj_type.value == 'notice_board')
+        num_skeletons = sum(1 for obj in interactive_objects if obj.obj_type.value == 'skeleton')
+        print(f"   📋 Досок: {num_boards}, ☠️ Костей: {num_skeletons}")
         
         # Добавляем декорации биома
         BiomeDecorator.add_biome_decorations(level, rooms, floor)

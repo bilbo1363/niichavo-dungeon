@@ -47,12 +47,12 @@ class InteractiveObject:
     def get_display_char(self) -> str:
         """Получить символ для отображения"""
         if self.obj_type == InteractiveObjectType.NOTICE_BOARD:
-            return "📋"  # Доска
+            return "B"  # Board (доска)
         elif self.obj_type == InteractiveObjectType.SKELETON:
             if self.interacted:
-                return "💀"  # Пустые кости (уже обыскали)
+                return "b"  # bones (пустые кости)
             else:
-                return "☠️"  # Кости с лутом
+                return "S"  # Skeleton (кости с лутом)
         return "?"
     
     def get_color(self) -> Tuple[int, int, int]:
@@ -254,13 +254,13 @@ class InteractiveObjectManager:
         
         # Количество костей (зависит от этажа)
         if floor <= 5:
-            num_skeletons = random.randint(0, 1)  # Мало костей на ранних этажах
+            num_skeletons = random.randint(1, 2)  # Гарантированно 1-2 кости
         elif floor <= 10:
-            num_skeletons = random.randint(1, 2)
+            num_skeletons = random.randint(2, 3)
         elif floor <= 15:
-            num_skeletons = random.randint(1, 3)
+            num_skeletons = random.randint(2, 4)
         else:
-            num_skeletons = random.randint(2, 3)  # Много костей в бездне
+            num_skeletons = random.randint(3, 4)  # Много костей в бездне
         
         # Выбираем случайные позиции
         available_positions = walkable_tiles.copy()
