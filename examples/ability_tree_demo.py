@@ -45,6 +45,7 @@ def main():
     
     # Главный цикл
     running = True
+    dt = 0
     while running:
         # Обработка событий
         for event in pygame.event.get():
@@ -60,6 +61,9 @@ def main():
             else:
                 # Передаём событие в UI
                 ability_tree_ui.handle_event(event)
+        
+        # Обновляем анимации
+        ability_tree_ui.update(dt)
         
         # Отрисовка
         screen.fill((15, 15, 20))
@@ -86,7 +90,7 @@ def main():
         
         # Обновление экрана
         pygame.display.flip()
-        clock.tick(60)
+        dt = clock.tick(60) / 1000.0  # Конвертируем в секунды
     
     pygame.quit()
 

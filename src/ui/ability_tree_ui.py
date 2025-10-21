@@ -1,7 +1,7 @@
 """
 UI дерева способностей
 Версия: 0.4.0
-Этап 0, Неделя 2, День 3
+Этап 0, Неделя 2, День 4-5
 """
 
 import pygame
@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from ..systems.abilities import Ability, AbilityTree, AbilityCategory, AbilityType
 from ..systems.stats import PlayerStats
 from ..systems.level_system import LevelSystem
+from ..systems.modifiers import StatModifier
 
 
 # Цветовая схема
@@ -90,15 +91,34 @@ class AbilityTreeUI:
         self.hovered_node: Optional[str] = None
         self.selected_node: Optional[str] = None
         
+        # Фильтры
+        self.show_locked = True
+        self.show_available = True
+        self.show_unlocked = True
+        
+        # Tooltip
+        self.tooltip_visible = False
+        self.tooltip_ability: Optional[Ability] = None
+        self.tooltip_alpha = 0
+        self.tooltip_target_alpha = 0
+        
+        # Анимации
+        self.unlock_animations: Dict[str, float] = {}  # ability_id -> progress (0-1)
+        self.pulse_animations: Dict[str, float] = {}   # ability_id -> phase (0-2π)
+        
         # Шрифты
         pygame.font.init()
         self.font_title = pygame.font.Font(None, 32)
         self.font_normal = pygame.font.Font(None, 24)
         self.font_small = pygame.font.Font(None, 18)
+        self.font_tiny = pygame.font.Font(None, 16)
         
         # Прокрутка
         self.scroll_offset = 0
         self.max_scroll = 0
+        
+        # Кнопки фильтров
+        self._build_filter_buttons()
     
     def _build_tree_layout(self):
         """Построить расположение узлов дерева"""
@@ -214,6 +234,10 @@ class AbilityTreeUI:
         """Нарисовать узел способности"""
         ability = node.ability
         
+        # Проверяем фильтры
+        if not self._should_show_node(ability):
+            return
+        
         # Корректируем позицию с учётом прокрутки
         y = node.y - self.scroll_offset
         rect = pygame.Rect(node.x, y, node.width, node.height)
@@ -224,6 +248,28 @@ class AbilityTreeUI:
         
         # Цвет узла
         node_color = self._get_node_color(ability)
+        
+        # Анимация пульсации для доступных способностей
+        import math
+        pulse_scale = 1.0
+        if ability.id in self.pulse_animations:
+            pulse = math.sin(self.pulse_animations[ability.id]) * 0.5 + 0.5
+            pulse_scale = 1.0 + pulse * 0.05
+        
+        # Анимация разблокировки
+        unlock_scale = 1.0
+        if ability.id in self.unlock_animations:
+            progress = self.unlock_animations[ability.id]
+            unlock_scale = 1.0 + math.sin(progress * math.pi) * 0.2
+        
+        # Применяем масштаб
+        if pulse_scale != 1.0 or unlock_scale != 1.0:
+            scale = pulse_scale * unlock_scale
+            scaled_width = int(node.width * scale)
+            scaled_height = int(node.height * scale)
+            offset_x = (scaled_width - node.width) // 2
+            offset_y = (scaled_height - node.height) // 2
+            rect = pygame.Rect(node.x - offset_x, y - offset_y, scaled_width, scaled_height)
         
         # Подсветка при наведении
         if self.hovered_node == ability.id:
@@ -334,11 +380,17 @@ class AbilityTreeUI:
         for node in self.nodes.values():
             self._draw_node(node)
         
+        # Рисуем кнопки фильтров
+        self._draw_filter_buttons()
+        
+        # Рисуем tooltip
+        self._draw_tooltip()
+        
         # Подсказка по управлению
         help_text = "ЛКМ - разблокировать | Колесо мыши - прокрутка | ESC - закрыть"
         help_surf = self.font_small.render(help_text, True, COLORS['text_dim'])
         help_rect = help_surf.get_rect(centerx=self.screen.get_width() // 2,
-                                       bottom=self.y + self.height - 10)
+                                       bottom=self.y + self.height - 80)
         self.screen.blit(help_surf, help_rect)
     
     def handle_event(self, event: pygame.event.Event) -> bool:
@@ -367,9 +419,29 @@ class AbilityTreeUI:
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # ЛКМ
                 mouse_pos = event.pos
-                adjusted_pos = (mouse_pos[0], mouse_pos[1] + self.scroll_offset)
+                
+                # Проверяем клик по кнопкам фильтров
+                for key, rect in self.filter_buttons.items():
+                    if rect.collidepoint(mouse_pos):
+                        if key == 'locked':
+                            self.show_locked = not self.show_locked
+                        elif key == 'available':
+                            self.show_available = not self.show_available
+                        elif key == 'unlocked':
+                            self.show_unlocked = not self.show_unlocked
+                        return True
+                
+                # Проверяем клик по кнопкам категорий
+                for category, rect in self.category_buttons.items():
+                    if rect.collidepoint(mouse_pos):
+                        if self.selected_category == category:
+                            self.selected_category = None  # Снять фильтр
+                        else:
+                            self.selected_category = category
+                        return True
                 
                 # Проверяем клик по узлу
+                adjusted_pos = (mouse_pos[0], mouse_pos[1] + self.scroll_offset)
                 for ability_id, node in self.nodes.items():
                     if node.contains_point(adjusted_pos):
                         self._try_unlock_ability(ability_id)
@@ -397,4 +469,309 @@ class AbilityTreeUI:
             if success:
                 # Тратим очко способности
                 self.level_system.ability_points -= self.ability_tree.available_abilities[ability_id].cost
+                # Запускаем анимацию разблокировки
+                self.unlock_animations[ability_id] = 0.0
                 print(f"✅ Разблокирована способность: {self.ability_tree.available_abilities[ability_id].name}")
+    
+    def _build_filter_buttons(self):
+        """Построить кнопки фильтров"""
+        button_width = 150
+        button_height = 35
+        button_spacing = 10
+        start_x = self.x + 20
+        start_y = self.y + self.height - button_height - 40
+        
+        self.filter_buttons = {
+            'locked': pygame.Rect(start_x, start_y, button_width, button_height),
+            'available': pygame.Rect(start_x + button_width + button_spacing, start_y, button_width, button_height),
+            'unlocked': pygame.Rect(start_x + (button_width + button_spacing) * 2, start_y, button_width, button_height),
+        }
+        
+        # Кнопки категорий
+        cat_button_width = 120
+        cat_start_x = self.x + self.width - (cat_button_width + button_spacing) * 5 - 20
+        cat_y = self.y + 50
+        
+        self.category_buttons = {}
+        for i, category in enumerate(AbilityCategory):
+            x = cat_start_x + i * (cat_button_width + button_spacing)
+            self.category_buttons[category] = pygame.Rect(x, cat_y, cat_button_width, 30)
+    
+    def _draw_filter_buttons(self):
+        """Отрисовать кнопки фильтров"""
+        # Фильтры состояния
+        filter_labels = {
+            'locked': ('Заблокировано', self.show_locked, COLORS['locked']),
+            'available': ('Доступно', self.show_available, COLORS['available']),
+            'unlocked': ('Разблокировано', self.show_unlocked, COLORS['unlocked']),
+        }
+        
+        for key, (label, active, color) in filter_labels.items():
+            rect = self.filter_buttons[key]
+            
+            # Фон кнопки
+            bg_color = color if active else COLORS['panel']
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
+            pygame.draw.rect(self.screen, COLORS['border'], rect, 2, border_radius=5)
+            
+            # Текст
+            text_color = COLORS['text'] if active else COLORS['text_dim']
+            text_surf = self.font_small.render(label, True, text_color)
+            text_rect = text_surf.get_rect(center=rect.center)
+            self.screen.blit(text_surf, text_rect)
+        
+        # Кнопки категорий
+        for category, rect in self.category_buttons.items():
+            active = self.selected_category == category
+            color = self._get_category_color(category)
+            
+            # Фон кнопки
+            bg_color = color if active else COLORS['panel']
+            pygame.draw.rect(self.screen, bg_color, rect, border_radius=5)
+            pygame.draw.rect(self.screen, COLORS['border'], rect, 2, border_radius=5)
+            
+            # Текст
+            label = {
+                AbilityCategory.COMBAT: "Боевые",
+                AbilityCategory.SURVIVAL: "Выживание",
+                AbilityCategory.EXPLORATION: "Исследование",
+                AbilityCategory.CRAFTING: "Крафт",
+                AbilityCategory.MAGIC: "Магия",
+            }[category]
+            
+            text_color = COLORS['text'] if active else COLORS['text_dim']
+            text_surf = self.font_tiny.render(label, True, text_color)
+            text_rect = text_surf.get_rect(center=rect.center)
+            self.screen.blit(text_surf, text_rect)
+    
+    def _draw_tooltip(self):
+        """Отрисовать tooltip с информацией о способности"""
+        if not self.hovered_node or self.hovered_node not in self.nodes:
+            self.tooltip_target_alpha = 0
+            return
+        
+        # Плавное появление
+        self.tooltip_target_alpha = 255
+        if self.tooltip_alpha < self.tooltip_target_alpha:
+            self.tooltip_alpha = min(self.tooltip_alpha + 15, self.tooltip_target_alpha)
+        elif self.tooltip_alpha > self.tooltip_target_alpha:
+            self.tooltip_alpha = max(self.tooltip_alpha - 15, self.tooltip_target_alpha)
+        
+        if self.tooltip_alpha < 10:
+            return
+        
+        ability = self.nodes[self.hovered_node].ability
+        
+        # Размеры tooltip
+        tooltip_width = 350
+        tooltip_padding = 15
+        line_height = 20
+        
+        # Собираем текст
+        lines = []
+        lines.append(("title", ability.name))
+        lines.append(("category", f"Категория: {self._get_category_name(ability.category)}"))
+        lines.append(("type", f"Тип: {self._get_type_name(ability.ability_type)}"))
+        lines.append(("space", ""))
+        
+        # Описание
+        desc_lines = self._wrap_text(ability.description, tooltip_width - tooltip_padding * 2, self.font_small)
+        for line in desc_lines:
+            lines.append(("desc", line))
+        
+        lines.append(("space", ""))
+        
+        # Эффекты
+        if ability.stat_modifiers:
+            lines.append(("header", "Эффекты:"))
+            for mod in ability.stat_modifiers:
+                effect_text = self._format_modifier(mod)
+                lines.append(("effect", f"  • {effect_text}"))
+        
+        # Требования
+        lines.append(("space", ""))
+        lines.append(("header", "Требования:"))
+        
+        req = ability.requirements
+        if req.required_level > 1:
+            level_met = self.level_system.level >= req.required_level
+            color_key = "success" if level_met else "error"
+            lines.append((color_key, f"  • Уровень: {req.required_level}"))
+        
+        if req.required_abilities:
+            for req_id in req.required_abilities:
+                req_ability = self.ability_tree.available_abilities.get(req_id)
+                if req_ability:
+                    unlocked = req_id in self.ability_tree.unlocked_abilities
+                    color_key = "success" if unlocked else "error"
+                    lines.append((color_key, f"  • {req_ability.name}"))
+        
+        if req.required_stats:
+            for stat_name, min_value in req.required_stats.items():
+                current = self._get_player_stats_dict().get(stat_name, 0)
+                met = current >= min_value
+                color_key = "success" if met else "error"
+                lines.append((color_key, f"  • {stat_name.capitalize()}: {min_value}"))
+        
+        # Стоимость
+        lines.append(("space", ""))
+        has_points = self.level_system.ability_points >= ability.cost
+        cost_color = "success" if has_points else "error"
+        lines.append((cost_color, f"Стоимость: {ability.cost} очков"))
+        
+        # Вычисляем высоту tooltip
+        tooltip_height = len(lines) * line_height + tooltip_padding * 2
+        
+        # Позиция tooltip (справа от курсора)
+        mouse_pos = pygame.mouse.get_pos()
+        tooltip_x = min(mouse_pos[0] + 20, self.screen.get_width() - tooltip_width - 10)
+        tooltip_y = min(mouse_pos[1], self.screen.get_height() - tooltip_height - 10)
+        
+        # Создаём поверхность с прозрачностью
+        tooltip_surf = pygame.Surface((tooltip_width, tooltip_height), pygame.SRCALPHA)
+        
+        # Фон
+        bg_color = (*COLORS['panel'], int(self.tooltip_alpha * 0.95))
+        pygame.draw.rect(tooltip_surf, bg_color, (0, 0, tooltip_width, tooltip_height), border_radius=8)
+        
+        # Рамка
+        border_color = (*COLORS['border'], int(self.tooltip_alpha))
+        pygame.draw.rect(tooltip_surf, border_color, (0, 0, tooltip_width, tooltip_height), 2, border_radius=8)
+        
+        # Цветная полоска категории
+        cat_color = (*self._get_category_color(ability.category), int(self.tooltip_alpha))
+        pygame.draw.rect(tooltip_surf, cat_color, (0, 0, tooltip_width, 5), border_top_left_radius=8, border_top_right_radius=8)
+        
+        # Текст
+        y = tooltip_padding
+        for line_type, text in lines:
+            if line_type == "space":
+                y += line_height // 2
+                continue
+            
+            # Выбираем цвет и шрифт
+            if line_type == "title":
+                font = self.font_normal
+                color = (*COLORS['text'], int(self.tooltip_alpha))
+            elif line_type == "header":
+                font = self.font_small
+                color = (*COLORS['active'], int(self.tooltip_alpha))
+            elif line_type == "success":
+                font = self.font_small
+                color = (*COLORS['available'], int(self.tooltip_alpha))
+            elif line_type == "error":
+                font = self.font_small
+                color = (*COLORS['locked'], int(self.tooltip_alpha))
+            else:
+                font = self.font_small
+                color = (*COLORS['text_dim'], int(self.tooltip_alpha))
+            
+            text_surf = font.render(text, True, color)
+            tooltip_surf.blit(text_surf, (tooltip_padding, y))
+            y += line_height
+        
+        # Рисуем tooltip на экране
+        self.screen.blit(tooltip_surf, (tooltip_x, tooltip_y))
+    
+    def _format_modifier(self, mod: StatModifier) -> str:
+        """Форматировать модификатор для отображения"""
+        from ..systems.modifiers import ModifierType
+        
+        stat_names = {
+            'attack': 'Атака',
+            'defense': 'Защита',
+            'max_health': 'Макс. здоровье',
+            'max_stamina': 'Макс. выносливость',
+            'perception': 'Восприятие',
+            'intelligence': 'Интеллект',
+            'luck': 'Удача',
+            'critical_chance': 'Шанс крита',
+            'evasion': 'Уклонение',
+        }
+        
+        stat_name = stat_names.get(mod.stat_name, mod.stat_name)
+        
+        if mod.modifier_type == ModifierType.FLAT:
+            sign = "+" if mod.value >= 0 else ""
+            return f"{stat_name} {sign}{int(mod.value)}"
+        elif mod.modifier_type == ModifierType.PERCENT:
+            sign = "+" if mod.value >= 0 else ""
+            return f"{stat_name} {sign}{int(mod.value * 100)}%"
+        else:
+            return f"{stat_name} x{mod.value}"
+    
+    def _get_category_name(self, category: AbilityCategory) -> str:
+        """Получить название категории"""
+        names = {
+            AbilityCategory.COMBAT: "Боевые",
+            AbilityCategory.SURVIVAL: "Выживание",
+            AbilityCategory.EXPLORATION: "Исследование",
+            AbilityCategory.CRAFTING: "Крафт",
+            AbilityCategory.MAGIC: "Магия",
+        }
+        return names.get(category, "Неизвестно")
+    
+    def _get_type_name(self, ability_type: AbilityType) -> str:
+        """Получить название типа способности"""
+        names = {
+            AbilityType.PASSIVE: "Пассивная",
+            AbilityType.ACTIVE: "Активная",
+            AbilityType.TOGGLE: "Переключаемая",
+        }
+        return names.get(ability_type, "Неизвестно")
+    
+    def _should_show_node(self, ability: Ability) -> bool:
+        """Проверить, нужно ли показывать узел с учётом фильтров"""
+        # Фильтр по категории
+        if self.selected_category and ability.category != self.selected_category:
+            return False
+        
+        # Фильтр по состоянию
+        is_unlocked = ability.id in self.ability_tree.unlocked_abilities
+        is_available = self.ability_tree.can_unlock(
+            ability.id,
+            self.level_system.level,
+            self.level_system.ability_points,
+            self._get_player_stats_dict()
+        )
+        
+        if is_unlocked and not self.show_unlocked:
+            return False
+        if is_available and not is_unlocked and not self.show_available:
+            return False
+        if not is_available and not is_unlocked and not self.show_locked:
+            return False
+        
+        return True
+    
+    def update(self, dt: float):
+        """
+        Обновить анимации
+        
+        Args:
+            dt: Время с последнего кадра в секундах
+        """
+        # Обновляем анимации разблокировки
+        to_remove = []
+        for ability_id, progress in self.unlock_animations.items():
+            self.unlock_animations[ability_id] = min(progress + dt * 2, 1.0)
+            if self.unlock_animations[ability_id] >= 1.0:
+                to_remove.append(ability_id)
+        
+        for ability_id in to_remove:
+            del self.unlock_animations[ability_id]
+        
+        # Обновляем пульсацию доступных способностей
+        import math
+        for ability_id, node in self.nodes.items():
+            if self.ability_tree.can_unlock(
+                ability_id,
+                self.level_system.level,
+                self.level_system.ability_points,
+                self._get_player_stats_dict()
+            ) and ability_id not in self.ability_tree.unlocked_abilities:
+                if ability_id not in self.pulse_animations:
+                    self.pulse_animations[ability_id] = 0
+                self.pulse_animations[ability_id] = (self.pulse_animations[ability_id] + dt * 2) % (2 * math.pi)
+            elif ability_id in self.pulse_animations:
+                del self.pulse_animations[ability_id]
