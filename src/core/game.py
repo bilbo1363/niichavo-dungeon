@@ -1978,19 +1978,19 @@ class Game:
         Определить биом для этажа
         
         Args:
-            floor: Номер этажа (1-20)
+            floor: Номер этажа (1-20+)
             
         Returns:
             Название биома для музыки
         """
         if floor <= 5:
-            return "catacombs"  # Древние катакомбы
+            return "dungeon"  # Этажи 1-5: Старые лаборатории
         elif floor <= 10:
-            return "flooded"  # Затопленные залы
+            return "catacombs"  # Этажи 6-10: Архивы и хранилища
         elif floor <= 15:
-            return "fire"  # Огненные пещеры
+            return "caves"  # Этажи 11-15: Экспериментальные зоны
         else:
-            return "abyss"  # Бездна
+            return "abyss"  # Этажи 16-20+: Зона катастрофы/Бездна
     
     def _any_ui_open(self) -> bool:
         """

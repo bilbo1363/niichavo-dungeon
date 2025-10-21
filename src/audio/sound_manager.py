@@ -318,12 +318,19 @@ class SoundManager:
             sound.set_volume(self.sfx_volume)
             sound.play()
     
-    def start_music(self, biome: str = "main") -> None:
+    def start_music(self, biome: str = "dungeon") -> None:
         """
         Запустить фоновую музыку
         
         Args:
-            biome: Биом для музыки (attic, main, catacombs, flooded, fire, abyss)
+            biome: Локация/биом для музыки:
+                - splash: Заставка
+                - menu: Главное меню
+                - attic: Чердак/Лаборатория (база)
+                - dungeon: Этажи 1-5 (Старые лаборатории)
+                - catacombs: Этажи 6-10 (Архивы и хранилища)
+                - caves: Этажи 11-15 (Экспериментальные зоны)
+                - abyss: Этажи 16-20+ (Зона катастрофы/Бездна)
         """
         if not self.music_enabled:
             return
@@ -348,30 +355,40 @@ class SoundManager:
         Args:
             biome: Биом (attic, main, catacombs, flooded, fire, abyss)
         """
-        # Соответствие биомов файлам
+        # Соответствие локаций/биомов файлам (приоритет mp3, fallback на wav)
         music_files = {
-            "attic": "theme_attic.wav",
-            "main": "theme_main.wav",
-            "catacombs": "theme_catacombs.wav",
-            "flooded": "theme_flooded.wav",
-            "fire": "theme_fire.wav",
-            "abyss": "theme_abyss.wav",
+            # Системные темы
+            "splash": ["theme_splash.mp3", "theme_splash.wav"],           # Заставка при запуске
+            "menu": ["theme_menu.mp3", "Menu.mp3"],                       # Главное меню
+            
+            # Игровые локации
+            "attic": ["theme_attic.mp3", "theme_laboratory.mp3"],        # Чердак/Лаборатория (база)
+            
+            # Биомы по этажам (уровни сложности)
+            "dungeon": ["theme_dungeon.mp3", "theme_main.mp3"],          # Этажи 1-5: Старые лаборатории
+            "catacombs": ["theme_catacombs.mp3"],                         # Этажи 6-10: Архивы и хранилища
+            "caves": ["theme_caves.mp3", "theme_experimental.mp3"],      # Этажи 11-15: Экспериментальные зоны
+            "abyss": ["theme_abyss.mp3", "theme_catastrophe.mp3"],       # Этажи 16-20+: Зона катастрофы/Бездна
         }
         
-        filename = music_files.get(biome, "theme_main.wav")
-        filepath = self.music_dir / filename
+        # Получаем список возможных файлов для биома
+        possible_files = music_files.get(biome, ["theme_main.mp3", "theme_main.wav"])
         
-        # Пытаемся загрузить из файла
-        if filepath.exists():
-            try:
-                # Используем pygame.mixer.music для фоновой музыки
-                pygame.mixer.music.load(str(filepath))
-                pygame.mixer.music.set_volume(self.music_volume)
-                pygame.mixer.music.play(loops=-1)  # Бесконечный цикл
-                print(f"   🎵 Музыка: {filename}")
-                return
-            except Exception as e:
-                print(f"⚠️ Ошибка загрузки музыки {filename}: {e}")
+        # Пытаемся загрузить первый существующий файл
+        for filename in possible_files:
+            filepath = self.music_dir / filename
+            
+            if filepath.exists():
+                try:
+                    # Используем pygame.mixer.music для фоновой музыки
+                    pygame.mixer.music.load(str(filepath))
+                    pygame.mixer.music.set_volume(self.music_volume)
+                    pygame.mixer.music.play(loops=-1)  # Бесконечный цикл
+                    print(f"   🎵 Музыка: {filename}")
+                    return
+                except Exception as e:
+                    print(f"⚠️ Ошибка загрузки музыки {filename}: {e}")
+                    continue  # Пробуем следующий файл
         
         # Если не удалось загрузить - генерируем
         print(f"   🎵 Генерация музыки для биома: {biome}")
