@@ -15,6 +15,14 @@ from .modifiers import (
     create_buff_modifier,
     create_research_modifier
 )
+from .abilities import (
+    Ability,
+    AbilityTree,
+    AbilityType,
+    AbilityCategory,
+    AbilityRequirement
+)
+from .ability_presets import create_all_abilities
 
 __all__ = [
     # Stats
@@ -36,4 +44,12 @@ __all__ = [
     'create_item_modifier',
     'create_buff_modifier',
     'create_research_modifier',
+    
+    # Abilities
+    'Ability',
+    'AbilityTree',
+    'AbilityType',
+    'AbilityCategory',
+    'AbilityRequirement',
+    'create_all_abilities',
 ]
