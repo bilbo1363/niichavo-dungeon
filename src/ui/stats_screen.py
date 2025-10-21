@@ -6,7 +6,7 @@ UI экран характеристик игрока
 
 import pygame
 from typing import Optional, Tuple
-from systems import PlayerStats, LevelSystem, ModifierManager
+from ..systems import PlayerStats, LevelSystem, ModifierManager
 
 
 class StatsScreen:
