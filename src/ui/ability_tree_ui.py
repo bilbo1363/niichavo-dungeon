@@ -193,7 +193,7 @@ class AbilityTreeUI:
     
     def _get_node_color(self, ability: Ability) -> Tuple[int, int, int]:
         """Получить цвет узла в зависимости от состояния"""
-        if ability.id in self.ability_tree.unlocked_abilities:
+        if ability.id in self.ability_tree.unlocked:
             return COLORS['unlocked']
         elif self.ability_tree.can_unlock(
             ability.id,
@@ -372,8 +372,8 @@ class AbilityTreeUI:
                 for req_id in ability.requirements.required_abilities:
                     if req_id in self.nodes:
                         from_node = self.nodes[req_id]
-                        unlocked = (req_id in self.ability_tree.unlocked_abilities and
-                                  ability_id in self.ability_tree.unlocked_abilities)
+                        unlocked = (req_id in self.ability_tree.unlocked and
+                                  ability_id in self.ability_tree.unlocked)
                         self._draw_connection_line(from_node, node, unlocked)
         
         # Рисуем узлы
@@ -600,9 +600,9 @@ class AbilityTreeUI:
         
         if req.required_abilities:
             for req_id in req.required_abilities:
-                req_ability = self.ability_tree.available_abilities.get(req_id)
+                req_ability = self.ability_tree.abilities.get(req_id)
                 if req_ability:
-                    unlocked = req_id in self.ability_tree.unlocked_abilities
+                    unlocked = req_id in self.ability_tree.unlocked
                     color_key = "success" if unlocked else "error"
                     lines.append((color_key, f"  • {req_ability.name}"))
         
@@ -727,7 +727,7 @@ class AbilityTreeUI:
             return False
         
         # Фильтр по состоянию
-        is_unlocked = ability.id in self.ability_tree.unlocked_abilities
+        is_unlocked = ability.id in self.ability_tree.unlocked
         is_available = self.ability_tree.can_unlock(
             ability.id,
             self.level_system.level,
@@ -769,7 +769,7 @@ class AbilityTreeUI:
                 self.level_system.level,
                 self.level_system.ability_points,
                 self._get_player_stats_dict()
-            ) and ability_id not in self.ability_tree.unlocked_abilities:
+            ) and ability_id not in self.ability_tree.unlocked:
                 if ability_id not in self.pulse_animations:
                     self.pulse_animations[ability_id] = 0
                 self.pulse_animations[ability_id] = (self.pulse_animations[ability_id] + dt * 2) % (2 * math.pi)
