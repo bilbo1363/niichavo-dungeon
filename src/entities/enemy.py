@@ -97,6 +97,21 @@ class Enemy:
             ),
         }
         return stats_map.get(enemy_type, EnemyStats())
+    
+    def get_xp_reward(self) -> int:
+        """
+        Получить награду опыта за убийство врага
+        
+        Returns:
+            Количество опыта
+        """
+        xp_map = {
+            EnemyType.RAT: 10,      # Слабый враг
+            EnemyType.ZOMBIE: 20,   # Средний враг
+            EnemyType.GHOST: 35,    # Сильный враг
+            EnemyType.MUTANT: 50,   # Очень сильный враг
+        }
+        return xp_map.get(self.enemy_type, 5)
         
     def _get_color_for_type(self, enemy_type: EnemyType) -> Tuple[int, int, int]:
         """

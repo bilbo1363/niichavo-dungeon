@@ -455,7 +455,16 @@ class Game:
                 # Атака (пробел или A)
                 if event.key in [pygame.K_SPACE, pygame.K_a]:
                     if self.current_location != "attic":
-                        self.combat.player_attack(self.player, self.current_level)
+                        killed_enemies = self.combat.player_attack(self.player, self.current_level)
+                        # Выдаём опыт за убитых врагов
+                        for enemy in killed_enemies:
+                            xp = enemy.get_xp_reward()
+                            levels_gained = self.level_system.gain_exp(xp)
+                            print(f"✨ +{xp} опыта!")
+                            # Если повысился уровень
+                            for level in levels_gained:
+                                print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
+                                print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
                     
                 # Быстрое сохранение (F5)
                 if event.key == pygame.K_F5:
@@ -1097,6 +1106,14 @@ class Game:
                 # Открываем контейнер
                 items = container.open()
                 
+                # Даём опыт за открытие контейнера
+                xp = 5
+                levels_gained = self.level_system.gain_exp(xp)
+                print(f"✨ +{xp} опыта за открытие контейнера!")
+                for level in levels_gained:
+                    print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
+                    print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
+                
                 if items:
                     # Звук открытия сундука
                     self.sound_manager.play_sound("chest_open")
@@ -1182,9 +1199,16 @@ class Game:
                 self.message_log.info(f"📜 {note.title}")
                 self.message_log.info(f"   {note.content}")
                 
-                # Помечаем как прочитанную
+                # Помечаем как прочитанную и даём опыт
                 if not note.read:
                     note.read = True
+                    # Даём опыт за чтение записки
+                    xp = 15
+                    levels_gained = self.level_system.gain_exp(xp)
+                    print(f"✨ +{xp} опыта за чтение записки!")
+                    for level in levels_gained:
+                        print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
+                        print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
                 
                 return
         

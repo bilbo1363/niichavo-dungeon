@@ -40,7 +40,7 @@ class CombatSystem:
             if timer > 0
         ]
         
-    def player_attack(self, player, level) -> bool:
+    def player_attack(self, player, level):
         """
         Атака игрока
         
@@ -49,16 +49,16 @@ class CombatSystem:
             level: Уровень
             
         Returns:
-            True если атака произошла
+            Список убитых врагов (для выдачи опыта)
         """
         # Проверяем кулдаун
         if self.player_attack_cooldown > 0:
-            return False
+            return []
             
         # Проверяем что есть оружие
         if not player.inventory.equipped_weapon:
             print("❌ Нет экипированного оружия!")
-            return False
+            return []
             
         # Определяем направление атаки (последнее направление движения)
         attack_x = player.x
@@ -67,6 +67,7 @@ class CombatSystem:
         # Ищем врагов в соседних клетках
         directions = [(0, -1), (0, 1), (-1, 0), (1, 0)]
         attacked = False
+        killed_enemies = []  # Список убитых врагов для выдачи опыта
         
         for dx, dy in directions:
             check_x = player.x + dx
@@ -80,6 +81,10 @@ class CombatSystem:
                 
                 # Наносим урон
                 is_dead = enemy.take_damage(damage)
+                
+                # Если враг умер - добавляем в список убитых
+                if is_dead:
+                    killed_enemies.append(enemy)
                 
                 # Добавляем визуальный эффект
                 self._add_damage_number(check_x, check_y, damage)
@@ -107,10 +112,10 @@ class CombatSystem:
                 
         if attacked:
             self.player_attack_cooldown = self.player_attack_delay
-            return True
+            return killed_enemies
         else:
             print("❌ Рядом нет врагов!")
-            return False
+            return []
             
     def enemy_attack(self, enemy, player) -> None:
         """
