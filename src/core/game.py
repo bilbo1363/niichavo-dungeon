@@ -975,14 +975,21 @@ class Game:
         # Восстанавливаем системы Этапа 0
         if "player_stats" in game_data:
             self.player_stats = PlayerStats.from_dict(game_data["player_stats"])
+            print("   📊 Характеристики восстановлены")
         if "level_system" in game_data:
             self.level_system = LevelSystem.from_dict(game_data["level_system"])
+            print(f"   ⬆️  Уровень: {self.level_system.level}, Очки: {self.level_system.ability_points}")
         if "ability_tree" in game_data:
-            self.ability_tree = AbilityTree.from_dict(game_data["ability_tree"])
+            # Создаём словарь способностей
+            abilities_dict = {ability.id: ability for ability in self.ability_tree.abilities.values()}
+            self.ability_tree = AbilityTree.from_dict(game_data["ability_tree"], abilities_dict)
+            print(f"   🌳 Способности: {len(self.ability_tree.unlocked)} разблокировано")
         if "station_manager" in game_data:
             self.station_manager = StationManager.from_dict(game_data["station_manager"])
+            print(f"   🔧 Станции: {len(self.station_manager.unlocked_stations)} разблокировано")
         if "crafting_system" in game_data:
             self.crafting_system = CraftingSystem.from_dict(game_data["crafting_system"])
+            print(f"   📜 Рецепты: {len(self.crafting_system.unlocked_recipes)} разблокировано")
         
         # Перезагружаем текущую локацию
         if self.current_location == "attic":
