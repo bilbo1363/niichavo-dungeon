@@ -200,8 +200,10 @@ class Game:
         self.modifier_manager = ModifierManager()
         
         # Системы способностей
+        self.ability_tree = AbilityTree()
         abilities = create_all_abilities()
-        self.ability_tree = AbilityTree(abilities, self.modifier_manager)
+        for ability in abilities:
+            self.ability_tree.register_ability(ability)
         
         # Системы крафта
         self.station_manager = create_all_stations()
