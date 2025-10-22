@@ -210,8 +210,7 @@ class Game:
         self.crafting_system = create_all_recipes()
         
         # UI для новых систем
-        self.stats_screen = StatsScreen(self.screen, self.player_stats, 
-                                         self.level_system, self.modifier_manager)
+        self.stats_screen = StatsScreen(self.screen)
         self.level_up_notification = LevelUpNotification(self.screen)
         self.ability_tree_ui = AbilityTreeUI(self.screen, self.ability_tree,
                                               self.player_stats, self.level_system)
@@ -1528,7 +1527,7 @@ class Game:
         # ===== UI ЭТАПА 0 =====
         # Экран характеристик
         if self.show_stats_screen:
-            self.stats_screen.draw()
+            self.stats_screen.draw(self.player_stats, self.level_system, self.modifier_manager)
         
         # Дерево способностей
         if self.show_ability_tree:
