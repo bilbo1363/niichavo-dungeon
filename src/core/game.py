@@ -392,7 +392,14 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
-                if self.stats_screen.handle_event(event):
+                result = self.stats_screen.handle_input(event)
+                if result == 'close':
+                    self.show_stats_screen = False
+                elif result == 'abilities':
+                    self.show_stats_screen = False
+                    self.show_ability_tree = True
+                # Закрытие по ESC
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.show_stats_screen = False
             return
         
@@ -470,6 +477,10 @@ class Game:
                 # Экран характеристик (C - Character)
                 if event.key == pygame.K_c:
                     self.show_stats_screen = not self.show_stats_screen
+                    if self.show_stats_screen:
+                        self.stats_screen.show()
+                    else:
+                        self.stats_screen.hide()
                     
                 # Дерево способностей (K - sKills, A занята атакой)
                 if event.key == pygame.K_k:
