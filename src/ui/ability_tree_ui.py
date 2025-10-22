@@ -198,8 +198,8 @@ class AbilityTreeUI:
         elif self.ability_tree.can_unlock(
             ability.id,
             self.level_system.level,
-            self.level_system.ability_points,
-            self._get_player_stats_dict()
+            self._get_player_stats_dict(),
+            self.level_system.ability_points
         ):
             return COLORS['available']
         else:
@@ -462,16 +462,16 @@ class AbilityTreeUI:
         if self.ability_tree.can_unlock(
             ability_id,
             self.level_system.level,
-            self.level_system.ability_points,
-            self._get_player_stats_dict()
+            self._get_player_stats_dict(),
+            self.level_system.ability_points
         ):
-            success = self.ability_tree.unlock_ability(ability_id)
+            success = self.ability_tree.unlock(ability_id)
             if success:
                 # Тратим очко способности
-                self.level_system.ability_points -= self.ability_tree.available_abilities[ability_id].cost
+                self.level_system.ability_points -= self.ability_tree.abilities[ability_id].cost
                 # Запускаем анимацию разблокировки
                 self.unlock_animations[ability_id] = 0.0
-                print(f"✅ Разблокирована способность: {self.ability_tree.available_abilities[ability_id].name}")
+                print(f"✅ Разблокирована способность: {self.ability_tree.abilities[ability_id].name}")
     
     def _build_filter_buttons(self):
         """Построить кнопки фильтров"""
@@ -731,8 +731,8 @@ class AbilityTreeUI:
         is_available = self.ability_tree.can_unlock(
             ability.id,
             self.level_system.level,
-            self.level_system.ability_points,
-            self._get_player_stats_dict()
+            self._get_player_stats_dict(),
+            self.level_system.ability_points
         )
         
         if is_unlocked and not self.show_unlocked:
@@ -767,8 +767,8 @@ class AbilityTreeUI:
             if self.ability_tree.can_unlock(
                 ability_id,
                 self.level_system.level,
-                self.level_system.ability_points,
-                self._get_player_stats_dict()
+                self._get_player_stats_dict(),
+                self.level_system.ability_points
             ) and ability_id not in self.ability_tree.unlocked:
                 if ability_id not in self.pulse_animations:
                     self.pulse_animations[ability_id] = 0
