@@ -21,6 +21,19 @@ from ..graphics.particle_system import ParticleSystem
 from ..story.story_manager import StoryManager
 from ..story.dialogue_system import DialogueUI
 
+# Системы Этапа 0
+from ..systems.stats import PlayerStats
+from ..systems.level_system import LevelSystem
+from ..systems.modifiers import ModifierManager
+from ..systems.abilities import AbilityTree
+from ..systems.ability_presets import create_all_abilities
+from ..objects.station_presets import create_all_stations
+from ..systems.recipe_presets import create_all_recipes
+from ..ui.stats_screen import StatsScreen
+from ..ui.level_up_notification import LevelUpNotification
+from ..ui.ability_tree_ui import AbilityTreeUI
+from ..ui.station_upgrade_ui import StationUpgradeUI
+
 
 class Game:
     """Основной класс игры"""
@@ -178,6 +191,36 @@ class Game:
         self.run_move_delay = 0.05  # Задержка при беге (быстрее)
         self.run_endurance_cost = 2  # Стоимость бега в выносливости за шаг
         
+        # ===== СИСТЕМЫ ЭТАПА 0 =====
+        print("🔄 Инициализация систем Этапа 0...")
+        
+        # Системы игрока
+        self.player_stats = PlayerStats()
+        self.level_system = LevelSystem()
+        self.modifier_manager = ModifierManager()
+        
+        # Системы способностей
+        abilities = create_all_abilities()
+        self.ability_tree = AbilityTree(abilities, self.modifier_manager)
+        
+        # Системы крафта
+        self.station_manager = create_all_stations()
+        self.crafting_system = create_all_recipes()
+        
+        # UI для новых систем
+        self.stats_screen = StatsScreen(self.screen, self.player_stats, 
+                                         self.level_system, self.modifier_manager)
+        self.level_up_notification = LevelUpNotification(self.screen)
+        self.ability_tree_ui = AbilityTreeUI(self.screen, self.ability_tree,
+                                              self.player_stats, self.level_system)
+        self.station_upgrade_ui = None  # Будет создан при открытии (нужен инвентарь)
+        
+        # Флаги отображения UI
+        self.show_stats_screen = False
+        self.show_ability_tree = False
+        self.show_station_upgrade = False
+        
+        print("✅ Системы Этапа 0 инициализированы")
         print("✅ Игра инициализирована")
         print(f"📺 Разрешение: {width}x{height}")
         print(f"⚙️  FPS: {self.fps}")
@@ -342,6 +385,40 @@ class Game:
                         self.show_exit_dialog = False
             return
         
+        # ===== ОБРАБОТКА UI ЭТАПА 0 =====
+        # Экран характеристик
+        if self.show_stats_screen:
+            for event in events:
+                if event.type == pygame.QUIT:
+                    self.running = False
+                if self.stats_screen.handle_event(event):
+                    self.show_stats_screen = False
+            return
+        
+        # Дерево способностей
+        if self.show_ability_tree:
+            for event in events:
+                if event.type == pygame.QUIT:
+                    self.running = False
+                if self.ability_tree_ui.handle_event(event):
+                    # UI вернул True - закрываем
+                    pass
+                # Закрытие по ESC
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.show_ability_tree = False
+            return
+        
+        # Крафт-станции
+        if self.show_station_upgrade and self.station_upgrade_ui:
+            for event in events:
+                if event.type == pygame.QUIT:
+                    self.running = False
+                self.station_upgrade_ui.handle_event(event)
+                # Закрытие по ESC
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.show_station_upgrade = False
+            return
+        
         for event in events:
             # Закрытие окна
             if event.type == pygame.QUIT:
@@ -387,6 +464,29 @@ class Game:
                 # Взаимодействие с хранилищем (T)
                 if event.key == pygame.K_t:
                     self._open_storage_ui()
+                
+                # ===== ГОРЯЧИЕ КЛАВИШИ ЭТАПА 0 =====
+                # Экран характеристик (C - Character)
+                if event.key == pygame.K_c:
+                    self.show_stats_screen = not self.show_stats_screen
+                    
+                # Дерево способностей (K - sKills, A занята атакой)
+                if event.key == pygame.K_k:
+                    self.show_ability_tree = not self.show_ability_tree
+                    
+                # Крафт-станции (V - Верстак, S занята)
+                if event.key == pygame.K_v:
+                    if self.current_location == "attic":
+                        self.show_station_upgrade = not self.show_station_upgrade
+                        # Создаём UI если ещё не создан
+                        if self.show_station_upgrade and self.station_upgrade_ui is None:
+                            self.station_upgrade_ui = StationUpgradeUI(
+                                self.screen,
+                                self.station_manager,
+                                self.level_system.level,
+                                self.player.inventory.items,
+                                0  # TODO: добавить систему денег
+                            )
                     
     def _update(self, dt: float) -> None:
         """
@@ -489,6 +589,15 @@ class Game:
         
         # Проверяем сюжетные триггеры
         self._check_story_triggers()
+        
+        # ===== ОБНОВЛЕНИЕ АНИМАЦИЙ ЭТАПА 0 =====
+        # Обновляем анимации дерева способностей
+        if self.show_ability_tree:
+            self.ability_tree_ui.update(dt)
+        
+        # Обновляем анимации станций
+        if self.show_station_upgrade and self.station_upgrade_ui:
+            self.station_upgrade_ui.update(dt)
         
         # Обновляем камеру (центрируем на игроке)
         self._update_camera()
@@ -1414,6 +1523,19 @@ class Game:
         elif self.show_riddle_ui and self.current_riddle:
             self.riddle_ui.render(self.screen, self.current_riddle)
         
+        # ===== UI ЭТАПА 0 =====
+        # Экран характеристик
+        if self.show_stats_screen:
+            self.stats_screen.draw()
+        
+        # Дерево способностей
+        if self.show_ability_tree:
+            self.ability_tree_ui.draw()
+        
+        # Крафт-станции
+        if self.show_station_upgrade and self.station_upgrade_ui:
+            self.station_upgrade_ui.draw()
+        
         # FPS счётчик (поверх всего)
         self._render_fps()
         
@@ -2006,7 +2128,11 @@ class Game:
             self.show_dialogue or
             self.show_settings_ui or
             self.show_exit_dialog or
-            self.show_note
+            self.show_note or
+            # UI Этапа 0
+            self.show_stats_screen or
+            self.show_ability_tree or
+            self.show_station_upgrade
         )
     
     def _update_fps_counter(self, dt: float) -> None:
