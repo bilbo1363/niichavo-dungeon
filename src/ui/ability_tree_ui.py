@@ -125,7 +125,7 @@ class AbilityTreeUI:
         # Группируем способности по категориям и уровням
         categories: Dict[AbilityCategory, Dict[int, List[Ability]]] = {}
         
-        for ability in self.ability_tree.available_abilities.values():
+        for ability in self.ability_tree.abilities.values():
             if ability.category not in categories:
                 categories[ability.category] = {}
             
