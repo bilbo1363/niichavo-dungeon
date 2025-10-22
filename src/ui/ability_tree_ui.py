@@ -76,6 +76,9 @@ class AbilityTreeUI:
         self.player_stats = player_stats
         self.level_system = level_system
         
+        # Callback для применения модификаторов
+        self.on_ability_unlocked = None
+        
         # Размеры и позиции
         self.width = screen.get_width() - 100
         self.height = screen.get_height() - 100
@@ -472,6 +475,10 @@ class AbilityTreeUI:
                 # Запускаем анимацию разблокировки
                 self.unlock_animations[ability_id] = 0.0
                 print(f"✅ Разблокирована способность: {self.ability_tree.abilities[ability_id].name}")
+                
+                # Вызываем callback для применения модификаторов
+                if self.on_ability_unlocked:
+                    self.on_ability_unlocked(ability_id)
     
     def _build_filter_buttons(self):
         """Построить кнопки фильтров"""

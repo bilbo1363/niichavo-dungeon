@@ -156,9 +156,9 @@ class StatsScreen:
         if fill_width > 0:
             pygame.draw.rect(self.screen, self.COLOR_EXP, (bar_x, y, fill_width, bar_height))
         
-        # Текст опыта
+        # Текст опыта (зелёный для контраста с жёлтым фоном)
         exp_text = f"Опыт: {level_system.experience}/{level_system.exp_to_next_level}"
-        text = self.font_small.render(exp_text, True, self.COLOR_TEXT)
+        text = self.font_small.render(exp_text, True, (50, 255, 50))  # Ярко-зелёный
         text_rect = text.get_rect(center=(bar_x + bar_width // 2, y + bar_height // 2))
         self.screen.blit(text, text_rect)
         

@@ -122,13 +122,19 @@ class Inventory:
         
         # Сначала пытаемся добавить в существующие стопки
         if item.stackable:
+            print(f"🔍 Ищем стак для: {item.name} (id={item.id}, stackable={item.stackable}, max={item.max_stack})")
             for slot in self.slots:
-                if not slot.is_empty() and slot.item.id == item.id:
-                    added = slot.add(item, remaining)
-                    remaining -= added
-                    if remaining <= 0:
-                        print(f"✅ Добавлено: {item.name} x{quantity}")
-                        return True
+                if not slot.is_empty():
+                    print(f"   Слот: {slot.item.name} (id={slot.item.id}, кол-во={slot.quantity}/{slot.item.max_stack})")
+                    if slot.item.id == item.id:
+                        print(f"   ✅ ID совпадают! Добавляем в стак")
+                        added = slot.add(item, remaining)
+                        remaining -= added
+                        if remaining <= 0:
+                            print(f"✅ Добавлено: {item.name} x{quantity}")
+                            return True
+                    else:
+                        print(f"   ❌ ID не совпадают: '{slot.item.id}' != '{item.id}'")
                         
         # Затем ищем пустые слоты
         for slot in self.slots:

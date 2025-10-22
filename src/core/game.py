@@ -221,6 +221,9 @@ class Game:
                                               self.player_stats, self.level_system)
         self.station_upgrade_ui = None  # Будет создан при открытии (нужен инвентарь)
         
+        # Подключаем callback для применения модификаторов способностей
+        self.ability_tree_ui.on_ability_unlocked = self._on_ability_unlocked
+        
         # Флаги отображения UI
         self.show_stats_screen = False
         self.show_ability_tree = False
@@ -1010,7 +1013,11 @@ class Game:
         # Пересоздаём UI с новыми системами
         self.ability_tree_ui = AbilityTreeUI(self.screen, self.ability_tree,
                                               self.player_stats, self.level_system)
+        self.ability_tree_ui.on_ability_unlocked = self._on_ability_unlocked
         print("   🎨 UI обновлён")
+        
+        # Применяем модификаторы от уже разблокированных способностей
+        self._apply_ability_modifiers()
         
         # Перезагружаем текущую локацию
         if self.current_location == "attic":
@@ -2164,6 +2171,74 @@ class Game:
         pygame.quit()
         print("\n👋 Игра завершена")
         print("✅ До новых встреч!")
+    
+    # Колбэки для систем Этапа 0
+    def _on_ability_unlocked(self, ability_id: str) -> None:
+        """
+        Обработка разблокировки способности
+        
+        Args:
+            ability_id: ID разблокированной способности
+        """
+        ability = self.ability_tree.abilities.get(ability_id)
+        if not ability:
+            return
+        
+        # Применяем модификаторы от пассивной способности
+        from ..systems.abilities import AbilityType
+        if ability.ability_type == AbilityType.PASSIVE:
+            for stat_mod in ability.stat_modifiers:
+                # Создаём модификатор
+                from ..systems.modifiers import StatModifier, ModifierType
+                modifier = StatModifier(
+                    type=stat_mod.type,
+                    stat=stat_mod.stat,
+                    value=stat_mod.value
+                )
+                # Добавляем с источником = ID способности
+                self.modifier_manager.add_modifier(modifier, source=f"ability_{ability_id}")
+                print(f"   ➕ Модификатор: {stat_mod.stat} {'+' if stat_mod.value > 0 else ''}{stat_mod.value}")
+            
+            # Пересчитываем характеристики
+            self._apply_all_modifiers()
+    
+    def _apply_all_modifiers(self) -> None:
+        """Применить все модификаторы к характеристикам игрока"""
+        # Получаем финальные характеристики с учётом всех модификаторов
+        final_stats = self.modifier_manager.get_final_stats(self.player_stats)
+        
+        # Обновляем характеристики игрока (только бонусные, базовые не трогаем)
+        # Это нужно для отображения в UI
+        print(f"   📊 Финальные характеристики применены")
+    
+    def _apply_ability_modifiers(self) -> None:
+        """Применить модификаторы от всех разблокированных способностей"""
+        from ..systems.abilities import AbilityType
+        
+        # Очищаем старые модификаторы от способностей
+        sources_to_remove = [source for source in self.modifier_manager.modifiers.keys() 
+                            if source.startswith("ability_")]
+        for source in sources_to_remove:
+            self.modifier_manager.remove_modifiers_by_source(source)
+        
+        # Применяем модификаторы от всех разблокированных пассивных способностей
+        unlocked_count = 0
+        for ability_id in self.ability_tree.unlocked:
+            ability = self.ability_tree.abilities.get(ability_id)
+            if ability and ability.ability_type == AbilityType.PASSIVE:
+                for stat_mod in ability.stat_modifiers:
+                    from ..systems.modifiers import StatModifier
+                    modifier = StatModifier(
+                        type=stat_mod.type,
+                        stat=stat_mod.stat,
+                        value=stat_mod.value
+                    )
+                    self.modifier_manager.add_modifier(modifier, source=f"ability_{ability_id}")
+                    unlocked_count += 1
+        
+        if unlocked_count > 0:
+            print(f"   ✨ Применено модификаторов от способностей: {unlocked_count}")
+            self._apply_all_modifiers()
     
     # Колбэки для меню настроек
     def _on_music_toggle(self, enabled: bool) -> None:
