@@ -27,7 +27,9 @@ from ..systems.level_system import LevelSystem
 from ..systems.modifiers import ModifierManager
 from ..systems.abilities import AbilityTree
 from ..systems.ability_presets import create_all_abilities
+from ..objects.crafting_stations import StationManager
 from ..objects.station_presets import create_all_stations
+from ..systems.crafting import CraftingSystem
 from ..systems.recipe_presets import create_all_recipes
 from ..ui.stats_screen import StatsScreen
 from ..ui.level_up_notification import LevelUpNotification
@@ -886,7 +888,13 @@ class Game:
                 self.level_generator.floor_state_manager
             ),
             "attic_storage": self._serialize_attic_storage(),
-            "story_flags": self.story_manager.story_flags
+            "story_flags": self.story_manager.story_flags,
+            # Системы Этапа 0
+            "player_stats": self.player_stats.to_dict(),
+            "level_system": self.level_system.to_dict(),
+            "ability_tree": self.ability_tree.to_dict(),
+            "station_manager": self.station_manager.to_dict(),
+            "crafting_system": self.crafting_system.to_dict()
         }
         
         # Сохраняем в папку профиля
@@ -963,6 +971,18 @@ class Game:
         if "story_flags" in game_data:
             self.story_manager.story_flags = game_data["story_flags"]
             print("   📖 Флаги сюжета восстановлены")
+        
+        # Восстанавливаем системы Этапа 0
+        if "player_stats" in game_data:
+            self.player_stats = PlayerStats.from_dict(game_data["player_stats"])
+        if "level_system" in game_data:
+            self.level_system = LevelSystem.from_dict(game_data["level_system"])
+        if "ability_tree" in game_data:
+            self.ability_tree = AbilityTree.from_dict(game_data["ability_tree"])
+        if "station_manager" in game_data:
+            self.station_manager = StationManager.from_dict(game_data["station_manager"])
+        if "crafting_system" in game_data:
+            self.crafting_system = CraftingSystem.from_dict(game_data["crafting_system"])
         
         # Перезагружаем текущую локацию
         if self.current_location == "attic":
