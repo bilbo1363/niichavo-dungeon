@@ -378,21 +378,27 @@ class SoundManager:
         for filename in possible_files:
             filepath = self.music_dir / filename
             
+            print(f"   🔍 Проверка файла: {filepath.absolute()}")
+            
             if filepath.exists():
                 try:
                     # Используем pygame.mixer.music для фоновой музыки
                     pygame.mixer.music.load(str(filepath))
                     pygame.mixer.music.set_volume(self.music_volume)
                     pygame.mixer.music.play(loops=-1)  # Бесконечный цикл
-                    print(f"   🎵 Музыка: {filename}")
+                    print(f"   ✅ Музыка загружена: {filename}")
                     return
                 except Exception as e:
                     print(f"⚠️ Ошибка загрузки музыки {filename}: {e}")
                     continue  # Пробуем следующий файл
+            else:
+                print(f"   ❌ Файл не найден: {filepath.absolute()}")
         
-        # Если не удалось загрузить - генерируем
-        print(f"   🎵 Генерация музыки для биома: {biome}")
-        self._generate_and_play_music()
+        # Если не удалось загрузить - НЕ генерируем, а сообщаем об ошибке
+        print(f"   ⚠️ ВНИМАНИЕ: Музыкальные файлы для '{biome}' не найдены!")
+        print(f"   📂 Ожидаемые файлы: {possible_files}")
+        print(f"   📂 Папка музыки: {self.music_dir.absolute()}")
+        print(f"   ⚠️ Музыка не будет воспроизводиться")
     
     def _generate_and_play_music(self) -> None:
         """Генерация и воспроизведение фоновой музыки"""
