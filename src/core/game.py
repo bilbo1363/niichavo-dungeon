@@ -490,13 +490,19 @@ class Game:
                 if event.key == pygame.K_v:
                     if self.current_location == "attic":
                         self.show_station_upgrade = not self.show_station_upgrade
-                        # Создаём UI если ещё не создан
-                        if self.show_station_upgrade and self.station_upgrade_ui is None:
+                        # Создаём UI если ещё не создан или обновляем инвентарь
+                        if self.show_station_upgrade:
+                            # Создаём словарь предметов из инвентаря
+                            inventory_dict = {}
+                            for slot in self.player.inventory.slots:
+                                if not slot.is_empty():
+                                    inventory_dict[slot.item.id] = slot.quantity
+                            
                             self.station_upgrade_ui = StationUpgradeUI(
                                 self.screen,
                                 self.station_manager,
                                 self.level_system.level,
-                                self.player.inventory.items,
+                                inventory_dict,
                                 0  # TODO: добавить систему денег
                             )
                     
