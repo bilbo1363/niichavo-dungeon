@@ -49,6 +49,9 @@ class Player:
         # Счётчик шагов
         self.steps = 0
         
+        # Деньги (монеты)
+        self.money = 0
+        
         # Лог сообщений (будет установлен из Game)
         self.message_log = None
         

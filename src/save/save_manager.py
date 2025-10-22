@@ -220,6 +220,7 @@ class GameStateSerializer:
             "x": player.x,
             "y": player.y,
             "steps": player.steps,
+            "money": player.money,
             "stats": {
                 "health": player.stats.health,
                 "max_health": player.stats.max_health,
@@ -247,6 +248,7 @@ class GameStateSerializer:
         player.x = data["x"]
         player.y = data["y"]
         player.steps = data["steps"]
+        player.money = data.get("money", 0)
         
         stats_data = data["stats"]
         player.stats.health = stats_data["health"]

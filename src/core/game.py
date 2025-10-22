@@ -514,7 +514,7 @@ class Game:
                                 self.station_manager,
                                 self.level_system.level,
                                 inventory_dict,
-                                0  # TODO: добавить систему денег
+                                self.player.money
                             )
                     
     def _update(self, dt: float) -> None:
@@ -1000,6 +1000,11 @@ class Game:
             self.crafting_system = CraftingSystem.from_dict(game_data["crafting_system"])
             print(f"   📜 Рецепты: {len(self.crafting_system.unlocked_recipes)} разблокировано")
         
+        # Пересоздаём UI с новыми системами
+        self.ability_tree_ui = AbilityTreeUI(self.screen, self.ability_tree,
+                                              self.player_stats, self.level_system)
+        print("   🎨 UI обновлён")
+        
         # Перезагружаем текущую локацию
         if self.current_location == "attic":
             self.current_level = None
@@ -1060,6 +1065,15 @@ class Game:
                 })()
                 self.show_note = True
                 
+                # Даём опыт за чтение записки (только первый раз)
+                if not result['already_used']:
+                    xp = 15
+                    levels_gained = self.level_system.gain_exp(xp)
+                    print(f"✨ +{xp} опыта за чтение записки!")
+                    for level in levels_gained:
+                        print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
+                        print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
+                
                 # Если это кости - выдаём лут
                 if result['type'] == 'skeleton' and result['loot'] and not result['already_used']:
                     self.sound_manager.play_sound("pickup")
@@ -1113,6 +1127,12 @@ class Game:
                 for level in levels_gained:
                     print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
                     print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
+                
+                # Даём деньги за открытие контейнера (случайная сумма)
+                import random
+                money_reward = random.randint(5, 20)
+                self.player.money += money_reward
+                print(f"💰 +{money_reward} монет! (всего: {self.player.money})")
                 
                 if items:
                     # Звук открытия сундука
