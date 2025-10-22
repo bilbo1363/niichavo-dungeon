@@ -120,9 +120,12 @@ class Game:
         self.sprite_manager = SpriteManager()
         self.particle_system = ParticleSystem()
         
-        # Звук
+        # Звук (создаём ДО запуска музыки)
         from ..audio.sound_manager import SoundManager
         self.sound_manager = SoundManager()
+        
+        # Запускаем музыку заставки
+        self.sound_manager.play_music("splash")
         
         # Подключаем колбэки настроек к звуковому менеджеру
         self.settings_ui.on_music_toggle = self._on_music_toggle
@@ -260,6 +263,9 @@ class Game:
                 # Обновляем заставку
                 if self.splash_screen.update(dt):
                     self.show_splash = False
+                    # Останавливаем музыку заставки и запускаем музыку меню
+                    self.sound_manager.stop_music()
+                    self.sound_manager.play_music("menu")
                 
                 # Рисуем заставку
                 self.splash_screen.render(self.screen)
@@ -383,6 +389,9 @@ class Game:
                         self.show_exit_dialog = False
                         self.show_main_menu = True
                         self.message_log.clear()
+                        # Переключаем музыку на меню
+                        self.sound_manager.stop_music()
+                        self.sound_manager.play_music("menu")
                     elif event.key == pygame.K_n or event.key == pygame.K_ESCAPE:
                         # Отменено
                         self.show_exit_dialog = False
@@ -2147,6 +2156,10 @@ class Game:
         # Показываем вступительный диалог ТОЛЬКО для новых игроков (без сохранения)
         if not has_save and self.current_floor == 0:
             self._check_story_triggers()
+        
+        # Переключаем музыку с меню на игровую
+        self.sound_manager.stop_music()
+        self.sound_manager.play_music(self.current_location)
     
     def _quit(self) -> None:
         """Завершение игры"""
