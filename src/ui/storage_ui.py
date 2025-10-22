@@ -39,6 +39,13 @@ class StorageUI:
         self.font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 18)
         
+        # Текущее хранилище
+        self.current_storage = None
+    
+    def set_storage(self, storage):
+        """Установить текущее хранилище"""
+        self.current_storage = storage
+        
     def render(self, screen: pygame.Surface, inventory, storage) -> None:
         """
         Отрисовка хранилища

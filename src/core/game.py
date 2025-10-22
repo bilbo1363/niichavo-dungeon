@@ -35,6 +35,7 @@ from ..ui.stats_screen import StatsScreen
 from ..ui.level_up_notification import LevelUpNotification
 from ..ui.ability_tree_ui import AbilityTreeUI
 from ..ui.station_upgrade_ui import StationUpgradeUI
+from ..ui.help_screen import HelpScreen
 
 
 class Game:
@@ -105,6 +106,9 @@ class Game:
         
         from ..ui.splash_screen import SplashScreen
         self.splash_screen = SplashScreen(self.width, self.height)
+        
+        # Экран помощи
+        self.help_screen = HelpScreen(self)
         
         self.show_inventory_ui = False
         self.show_storage_ui = False
@@ -340,20 +344,23 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
-                if self.inventory_ui.handle_input(event, self.player.inventory, self.player):
+                if self.inventory_ui.handle_input(event, self.player.inventory, self.player, self.modifier_manager):
                     self.show_inventory_ui = False
                     self.inventory_ui.selected_slot = None
             return
         
         # Если открыто хранилище - обрабатываем его ввод
         if self.show_storage_ui:
+            # Используем текущее хранилище (основное или размещённое)
+            storage = self.storage_ui.current_storage if self.storage_ui.current_storage else self.attic.storage
             for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
-                if self.storage_ui.handle_input(event, self.player.inventory, self.attic.storage):
+                if self.storage_ui.handle_input(event, self.player.inventory, storage):
                     self.show_storage_ui = False
                     self.storage_ui.selected_inventory_slot = None
                     self.storage_ui.selected_storage_slot = None
+                    self.storage_ui.current_storage = None  # Сбрасываем текущее хранилище
             return
         
         # Если открыта загадка - обрабатываем её ввод
@@ -386,7 +393,7 @@ class Game:
                     self.running = False
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_y:
-                        # Подтверждено - выход в меню
+                        # Подтверждено - выход в меню (БЕЗ автосохранения)
                         self.show_exit_dialog = False
                         self.show_main_menu = True
                         self.message_log.clear()
@@ -446,10 +453,19 @@ class Game:
                 
             # Нажатие клавиш
             if event.type == pygame.KEYDOWN:
+                # Экран помощи (F1)
+                if event.key == pygame.K_F1:
+                    self.help_screen.toggle()
+                
+                # ESC - закрыть экран помощи или показать диалог выхода
                 if event.key == pygame.K_ESCAPE:
-                    # Показываем диалог подтверждения выхода
-                    self.show_exit_dialog = True
-                    
+                    if self.help_screen.active:
+                        # Если экран помощи открыт, закрываем его
+                        self.help_screen.toggle()
+                    else:
+                        # Иначе показываем диалог подтверждения выхода
+                        self.show_exit_dialog = True
+                
                 # Переключение полноэкранного режима (F11)
                 if event.key == pygame.K_F11:
                     self._toggle_fullscreen()
@@ -489,6 +505,11 @@ class Game:
                     self.show_inventory_ui = not self.show_inventory_ui
                     if not self.show_inventory_ui:
                         self.inventory_ui.selected_slot = None
+                
+                # Разместить предмет (P - Place)
+                if event.key == pygame.K_p:
+                    if self.current_location == "attic":
+                        self._try_place_item()
                     
                 # Взаимодействие с хранилищем (T)
                 if event.key == pygame.K_t:
@@ -524,7 +545,8 @@ class Game:
                                 self.station_manager,
                                 self.level_system.level,
                                 inventory_dict,
-                                self.player.money
+                                self.player.money,
+                                self.crafting_system
                             )
                     
     def _update(self, dt: float) -> None:
@@ -637,6 +659,28 @@ class Game:
         # Обновляем анимации станций
         if self.show_station_upgrade and self.station_upgrade_ui:
             self.station_upgrade_ui.update(dt)
+        
+        # Проверяем был ли крафт (ВСЕГДА, даже если UI закрыт!)
+        if self.station_upgrade_ui:
+            crafted = self.station_upgrade_ui.get_and_clear_crafted()
+            if crafted:
+                # Удаляем ингредиенты из реального инвентаря
+                for item_id, count in crafted["ingredients"].items():
+                    for slot in self.player.inventory.slots:
+                        if not slot.is_empty() and slot.item.id == item_id:
+                            removed = min(count, slot.quantity)
+                            slot.remove(removed)
+                            count -= removed
+                            if count <= 0:
+                                break
+                
+                # Добавляем результат в реальный инвентарь (используем кэшированную базу из UI)
+                result_item = self.station_upgrade_ui.item_db.get_item(crafted["result_item"])
+                if result_item:
+                    self.player.inventory.add_item(result_item, crafted["result_count"])
+                    self.message_log.success(f"✅ Скрафчено: {crafted['recipe'].name} x{crafted['result_count']}")
+                    self.sound_manager.play_sound("pickup")
+                    # Результат уже добавлен в словарь UI в методе _try_craft
         
         # Обновляем камеру (центрируем на игроке)
         self._update_camera()
@@ -907,6 +951,7 @@ class Game:
                 self.level_generator.floor_state_manager
             ),
             "attic_storage": self._serialize_attic_storage(),
+            "placed_chests": self._serialize_placed_chests(),
             "story_flags": self.story_manager.story_flags,
             # Системы Этапа 0
             "player_stats": self.player_stats.to_dict(),
@@ -986,6 +1031,11 @@ class Game:
             self._deserialize_attic_storage(game_data["attic_storage"])
             print("   📦 Хранилище восстановлено")
         
+        # Восстанавливаем размещённые сундуки
+        if "placed_chests" in game_data:
+            self._deserialize_placed_chests(game_data["placed_chests"])
+            print(f"   📦 Размещённые сундуки восстановлены: {len(self.attic.placed_chests)}")
+        
         # Восстанавливаем флаги сюжета
         if "story_flags" in game_data:
             self.story_manager.story_flags = game_data["story_flags"]
@@ -1034,9 +1084,48 @@ class Game:
         """Показать инвентарь (I)"""
         self.player.inventory.print_inventory()
     
+    def _check_station_interaction(self) -> None:
+        """Проверка взаимодействия со станциями на чердаке"""
+        player_pos = (self.player.x, self.player.y)
+        station_type = self.attic.get_station_at(*player_pos)
+        
+        if station_type:
+            # Открываем UI станции
+            self.show_station_upgrade = True
+            
+            # Создаём словарь инвентаря
+            inventory_dict = {}
+            for slot in self.player.inventory.slots:
+                if not slot.is_empty():
+                    inventory_dict[slot.item.id] = slot.quantity
+            
+            # Создаём UI станции
+            self.station_upgrade_ui = StationUpgradeUI(
+                self.screen,
+                self.station_manager,
+                self.level_system.level,
+                inventory_dict,
+                self.player.money,
+                self.crafting_system
+            )
+            
+            # Сообщение игроку
+            station_names = {
+                "workbench": "Верстак",
+                "laboratory": "Лаборатория",
+                "alchemy_table": "Алхимический стол",
+                "magic_circle": "Магический круг",
+                "aldan_terminal": "Терминал АЛДАН"
+            }
+            station_name = station_names.get(station_type, "Станция")
+            self.message_log.info(f"Открыт доступ к: {station_name}")
+            print(f"🔧 Взаимодействие со станцией: {station_name}")
+    
     def _handle_e_interaction(self) -> None:
         """Обработка взаимодействия по клавише E (приоритет: интерактивные объекты -> контейнеры -> предметы -> загадки -> записки)"""
         if self.current_location == "attic":
+            # На чердаке проверяем взаимодействие со станциями
+            self._check_station_interaction()
             return
         
         # 1. Проверяем интерактивные объекты (доски и кости) - высший приоритет
@@ -1072,30 +1161,87 @@ class Game:
                 # Взаимодействуем с объектом
                 result = obj.interact()
                 
-                # Показываем записку
-                self.current_note = type('Note', (), {
-                    'title': result['note_title'],
-                    'text': result['note_text']
-                })()
-                self.show_note = True
-                
-                # Даём опыт за чтение записки (только первый раз)
-                if not result['already_used']:
-                    xp = 15
-                    levels_gained = self.level_system.gain_exp(xp)
-                    print(f"✨ +{xp} опыта за чтение записки!")
-                    for level in levels_gained:
-                        print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
-                        print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
-                
-                # Если это кости - выдаём лут
-                if result['type'] == 'skeleton' and result['loot'] and not result['already_used']:
-                    self.sound_manager.play_sound("pickup")
-                    self.message_log.success(f"☠️ Обыскали останки путешественника")
+                # Показываем записку только если есть текст
+                if result['note_title'] or result['note_text']:
+                    self.current_note = type('Note', (), {
+                        'title': result['note_title'],
+                        'text': result['note_text']
+                    })()
+                    self.show_note = True
                     
-                    for loot_item in result['loot']:
-                        self.message_log.item(f"  + {loot_item}")
-                        print(f"  + {loot_item}")
+                    # Даём опыт за чтение записки (только первый раз)
+                    if not result['already_used']:
+                        xp = 15
+                        levels_gained = self.level_system.gain_exp(xp)
+                        print(f"✨ +{xp} опыта за чтение записки!")
+                        for level in levels_gained:
+                            print(f"🎉 УРОВЕНЬ ПОВЫШЕН! Теперь уровень {level}!")
+                            print(f"   +1 очко способностей (всего: {self.level_system.ability_points})")
+                
+                # Если это кости или ресурсные объекты - выдаём лут
+                resource_objects = ['skeleton', 'junk_pile', 'scrap_heap', 'old_cabinet', 
+                                   'collapsed_wall', 'debris', 'workbench_ruins']
+                if result['type'] in resource_objects and result['loot'] and not result['already_used']:
+                    self.sound_manager.play_sound("pickup")
+                    
+                    # Сообщения для разных типов объектов
+                    messages = {
+                        'skeleton': "☠️ Обыскали останки путешественника",
+                        'junk_pile': "🗑️ Обыскали кучу хлама",
+                        'scrap_heap': "⚙️ Собрали металлолом",
+                        'old_cabinet': "🗄️ Обыскали старый буфет",
+                        'collapsed_wall': "🧱 Разобрали завал",
+                        'debris': "💥 Обыскали обломки",
+                        'workbench_ruins': "🔨 Разобрали остатки верстака"
+                    }
+                    self.message_log.success(messages.get(result['type'], "Обыскали объект"))
+                    
+                    # Преобразуем строковые названия в Item объекты и добавляем в инвентарь
+                    from ..items.item import ItemDatabase
+                    item_db = ItemDatabase()
+                    
+                    for loot_item_name in result['loot']:
+                        # Проверяем, это золото или предмет
+                        if loot_item_name.startswith("Золото ("):
+                            # Извлекаем количество золота
+                            import re
+                            match = re.search(r'\((\d+)\)', loot_item_name)
+                            if match:
+                                gold_amount = int(match.group(1))
+                                self.player.money += gold_amount
+                                self.message_log.item(f"  + {loot_item_name}")
+                                print(f"  + {loot_item_name}")
+                        else:
+                            # Сначала пробуем использовать как ID предмета напрямую
+                            item = item_db.get_item(loot_item_name)
+                            
+                            # Если не нашли, пробуем маппинг старых названий
+                            if not item:
+                                item_name_to_id = {
+                                    "Зелье здоровья (малое)": "healing_potion_basic",
+                                    "Зелье здоровья (среднее)": "healing_potion_advanced",
+                                    "Зелье здоровья (большое)": "healing_potion_master",
+                                    "Зелье выносливости": "stamina_potion_basic",
+                                    "Хлеб": "bread",
+                                    "Факел": "flashlight",
+                                    "Верёвка": "rope",
+                                    "Записная книжка": "notebook",
+                                }
+                                item_id = item_name_to_id.get(loot_item_name)
+                                if item_id:
+                                    item = item_db.get_item(item_id)
+                            
+                            # Добавляем предмет если нашли
+                            if item:
+                                if self.player.inventory.add_item(item):
+                                    self.message_log.item(f"  + {item.name}")
+                                    print(f"  + {item.name}")
+                                else:
+                                    self.message_log.warning(f"  ⚠️ Инвентарь полон: {item.name}")
+                            else:
+                                # Предмет не найден в базе
+                                self.message_log.warning(f"  ⚠️ Неизвестный предмет: {loot_item_name}")
+                                print(f"  ⚠️ Неизвестный предмет: {loot_item_name}")
                     
                     # Эффект частиц
                     self.particle_system.emit(
@@ -1457,14 +1603,59 @@ class Game:
                 self.message_log.info(f"Записка: {note.title}{status} (нажмите E)")
                 return
         
+    def _try_place_item(self) -> None:
+        """Попытка разместить предмет из инвентаря"""
+        from ..items.item import ItemType
+        
+        # Проверяем есть ли размещаемый предмет в инвентаре
+        placeable_slot = None
+        for i, slot in enumerate(self.player.inventory.slots):
+            if not slot.is_empty() and slot.item.item_type == ItemType.PLACEABLE:
+                placeable_slot = i
+                break
+        
+        if placeable_slot is None:
+            self.message_log.warning("Нет размещаемых предметов в инвентаре!")
+            print("❌ Нет размещаемых предметов (сундуков, факелов)")
+            return
+        
+        item = self.player.inventory.slots[placeable_slot].item
+        
+        # Проверяем можно ли разместить на текущей позиции
+        if item.id == "wooden_chest":
+            if self.attic.can_place_chest(self.player.x, self.player.y):
+                # Размещаем сундук
+                if self.attic.place_chest(self.player.x, self.player.y):
+                    # Убираем из инвентаря
+                    self.player.inventory.slots[placeable_slot].remove(1)
+                    self.message_log.success(f"📦 {item.name} размещён!")
+                    print(f"✅ {item.name} размещён на ({self.player.x}, {self.player.y})")
+                    self.sound_manager.play_sound("pickup")
+            else:
+                self.message_log.warning("Здесь нельзя разместить сундук!")
+                print("❌ Нельзя разместить здесь (занято или стена)")
+        else:
+            self.message_log.info(f"Размещение {item.name} пока не реализовано")
+    
     def _open_storage_ui(self) -> None:
         """Открыть GUI хранилища"""
         # Проверяем что мы на чердаке
         if self.current_location != "attic":
             print("❌ Хранилище доступно только на чердаке!")
             return
+        
+        # Проверяем размещённые сундуки (на текущей клетке или рядом)
+        for dx, dy in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+            chest = self.attic.get_chest_at(self.player.x + dx, self.player.y + dy)
+            if chest:
+                # Открываем размещённый сундук
+                self.show_storage_ui = True
+                self.storage_ui.set_storage(chest["storage"])
+                self.message_log.info("Открыт размещённый сундук")
+                print(f"📦 Открыт размещённый сундук на ({self.player.x + dx}, {self.player.y + dy})")
+                return
             
-        # Проверяем что мы рядом с сундуком
+        # Проверяем что мы рядом с основным сундуком
         if self.attic.storage_pos:
             storage_x, storage_y = self.attic.storage_pos
             distance = abs(self.player.x - storage_x) + abs(self.player.y - storage_y)
@@ -1473,8 +1664,9 @@ class Game:
                 print("❌ Подойдите ближе к сундуку!")
                 return
         
-        # Открываем GUI
+        # Открываем GUI основного хранилища
         self.show_storage_ui = True
+        self.storage_ui.set_storage(self.attic.storage)
     
     def _interact_with_storage(self) -> None:
         """Взаимодействие с хранилищем (T)"""
@@ -1622,7 +1814,9 @@ class Game:
         elif self.show_inventory_ui:
             self.inventory_ui.render_inventory(self.screen, self.player.inventory)
         elif self.show_storage_ui:
-            self.storage_ui.render(self.screen, self.player.inventory, self.attic.storage)
+            # Используем текущее хранилище (основное или размещённое)
+            storage = self.storage_ui.current_storage if self.storage_ui.current_storage else self.attic.storage
+            self.storage_ui.render(self.screen, self.player.inventory, storage)
         elif self.show_riddle_ui and self.current_riddle:
             self.riddle_ui.render(self.screen, self.current_riddle)
         
@@ -1639,6 +1833,9 @@ class Game:
         if self.show_station_upgrade and self.station_upgrade_ui:
             self.station_upgrade_ui.draw()
         
+        # Экран помощи (поверх всего)
+        self.help_screen.render(self.screen)
+        
         # FPS счётчик (поверх всего)
         self._render_fps()
         
@@ -1646,157 +1843,189 @@ class Game:
         pygame.display.flip()
         
     def _render_hud(self) -> None:
-        """Отрисовка HUD"""
-        font = pygame.font.Font(None, 24)
+        """Отрисовка современного HUD внизу экрана"""
+        # Параметры HUD панели
+        hud_height = 100
+        hud_y = self.height - hud_height
+        padding = 15
         
-        # Позиция игрока
-        pos_text = font.render(
-            f"Позиция: ({self.player.x}, {self.player.y})",
-            True,
-            (255, 255, 255)
+        # Фон HUD панели (полупрозрачный)
+        hud_surface = pygame.Surface((self.width, hud_height))
+        hud_surface.set_alpha(200)
+        hud_surface.fill((20, 20, 30))
+        self.screen.blit(hud_surface, (0, hud_y))
+        
+        # Верхняя граница HUD
+        pygame.draw.line(self.screen, (100, 100, 120), (0, hud_y), (self.width, hud_y), 2)
+        
+        # Вычисляем модифицированные значения
+        max_health = int(self.modifier_manager.calculate_modified_value(
+            self.player.stats.max_health, "max_health"))
+        max_endurance = int(self.modifier_manager.calculate_modified_value(
+            self.player.stats.max_endurance, "max_endurance"))
+        
+        # Шрифты
+        label_font = pygame.font.Font(None, 20)
+        value_font = pygame.font.Font(None, 28)
+        
+        # Начальная позиция для элементов
+        x_offset = padding
+        y_base = hud_y + padding
+        
+        # === ЗДОРОВЬЕ ===
+        # Текущее здоровье не должно превышать максимальное
+        current_health = min(self.player.stats.health, max_health)
+        self._draw_hud_stat(
+            x_offset, y_base,
+            "❤ Здоровье",
+            current_health, max_health,
+            (255, 50, 50), (100, 20, 20),
+            label_font, value_font
         )
-        self.screen.blit(pos_text, (10, 10))
+        x_offset += 250
         
-        # Здоровье
-        hp_text = font.render(
-            f"HP: {self.player.stats.health}/{self.player.stats.max_health}",
-            True,
-            (255, 0, 0)
-        )
-        self.screen.blit(hp_text, (10, 35))
-        
-        # Выносливость (с индикацией бега)
+        # === ВЫНОСЛИВОСТЬ ===
         keys = pygame.key.get_pressed()
         is_running = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
+        stamina_label = "🏃 Выносливость" if is_running else "⚡ Выносливость"
+        stamina_color = (255, 165, 0) if is_running else (0, 200, 255)
+        stamina_bg = (100, 60, 0) if is_running else (0, 60, 100)
         
-        stamina_color = (255, 165, 0) if is_running else (0, 255, 255)  # Оранжевый при беге
-        stamina_prefix = "🏃 " if is_running else ""
-        
-        stamina_text = font.render(
-            f"{stamina_prefix}Выносливость: {self.player.stats.endurance}/{self.player.stats.max_endurance}",
-            True,
-            stamina_color
+        self._draw_hud_stat(
+            x_offset, y_base,
+            stamina_label,
+            self.player.stats.endurance, max_endurance,
+            stamina_color, stamina_bg,
+            label_font, value_font
         )
-        self.screen.blit(stamina_text, (10, 60))
+        x_offset += 250
         
-        # Шаги
-        steps_text = font.render(
-            f"Шагов: {self.player.steps}",
-            True,
-            (200, 200, 200)
+        # === ОПЫТ ===
+        current_xp = self.level_system.experience
+        xp_to_next = self.level_system.exp_to_next_level
+        level = self.level_system.level
+        
+        self._draw_hud_stat(
+            x_offset, y_base,
+            f"⭐ Уровень {level}",
+            current_xp, xp_to_next,
+            (255, 215, 0), (100, 80, 0),
+            label_font, value_font
         )
-        self.screen.blit(steps_text, (10, 85))
+        x_offset += 250
         
-        # Локация
+        # === ЗОЛОТО ===
+        gold = self.player.money
+        gold_label = label_font.render("💰 Золото", True, (255, 215, 0))
+        self.screen.blit(gold_label, (x_offset, y_base))
+        
+        gold_value = value_font.render(f"{gold}", True, (255, 215, 0))
+        self.screen.blit(gold_value, (x_offset, y_base + 25))
+        
+        # === ЛОКАЦИЯ (справа) ===
         if self.current_location == "attic":
-            location_text = "Чердак"
+            location_text = "📍 Чердак"
             biome_text = ""
         else:
-            location_text = f"Этаж: {self.current_floor}"
-            # Получаем название биома
+            location_text = f"📍 Этаж {self.current_floor}"
             from src.world.biomes import BiomeManager
             biome = BiomeManager.get_biome_for_floor(self.current_floor)
             biome_text = biome.name
-            
-        floor_text = font.render(
-            location_text,
-            True,
-            (255, 255, 255)
-        )
-        self.screen.blit(floor_text, (10, 110))
         
-        # Название биома (если не на чердаке)
+        location_font = pygame.font.Font(None, 24)
+        loc_render = location_font.render(location_text, True, (200, 200, 200))
+        loc_x = self.width - loc_render.get_width() - padding
+        self.screen.blit(loc_render, (loc_x, y_base + 5))
+        
         if biome_text:
-            biome_font = pygame.font.Font(None, 20)
-            biome_render = biome_font.render(
-                f"📍 {biome_text}",
-                True,
-                (150, 200, 255)  # Голубоватый цвет
-            )
-            self.screen.blit(biome_render, (10, 135))
+            biome_render = label_font.render(biome_text, True, (150, 200, 255))
+            biome_x = self.width - biome_render.get_width() - padding
+            self.screen.blit(biome_render, (biome_x, y_base + 30))
         
-        # Подсказка
-        hint_font = pygame.font.Font(None, 20)
-        hint_text = hint_font.render(
-            "Красный круг = ВНИЗ (глубже), Зелёный круг = ВВЕРХ (назад)",
-            True,
-            (150, 150, 150)
-        )
-        self.screen.blit(hint_text, (10, self.height - 30))
-        
-        # Дополнительная подсказка
-        hint2_text = hint_font.render(
-            "Этаж 1 = поверхность, Этаж 20 = самое дно подземелья",
-            True,
-            (150, 150, 150)
-        )
-        self.screen.blit(hint2_text, (10, self.height - 50))
-        
-        # Подсказка для интерактивных объектов
-        if self.current_location != "attic":
-            for obj in self.current_level.interactive_objects:
-                if obj.x == self.player.x and obj.y == self.player.y:
-                    hint_text = hint_font.render(
-                        obj.get_interaction_hint(),
-                        True,
-                        (255, 255, 100)  # Яркий жёлтый
-                    )
-                    self.screen.blit(hint_text, (10, self.height - 70))
-                    break
-        
-        # Тестовая подсказка
-        hint3_text = hint_font.render(
-            "SHIFT = бег | SPACE/A = атака | E = подобрать/загадка/записка | I = инвентарь | T = сундук",
-            True,
-            (255, 255, 0)
-        )
-        self.screen.blit(hint3_text, (10, self.height - 70))
-        
-        # Подсказка сохранений
-        hint4_text = hint_font.render(
-            "F5 = сохранить (на чердаке) | F9 = загрузить | F11 = полный экран",
-            True,
-            (255, 255, 0)
-        )
-        self.screen.blit(hint4_text, (10, self.height - 90))
-        
-        # Подсказка предметов
-        hint5_text = hint_font.render(
-            "Предметы подбираются автоматически",
-            True,
-            (150, 150, 150)
-        )
-        self.screen.blit(hint5_text, (10, self.height - 110))
+        # === ИНФОРМАЦИЯ В ЛЕВОМ ВЕРХНЕМ УГЛУ ===
+        info_font = pygame.font.Font(None, 22)
+        y_info = 10
         
         # Прогресс стабилизации (только в подземелье)
         if self.current_location != "attic":
             stabilized = self.level_generator.floor_state_manager.get_stabilized_count()
-            progress_text = font.render(
+            progress_text = info_font.render(
                 f"Стабилизировано: {stabilized}/20",
                 True,
                 (0, 255, 255)
             )
-            self.screen.blit(progress_text, (10, 135))
+            self.screen.blit(progress_text, (10, y_info))
+            y_info += 25
             
             # Статус текущего этажа
             is_stabilized = self.level_generator.floor_state_manager.is_floor_stabilized(self.current_floor)
             status_color = (0, 255, 0) if is_stabilized else (255, 100, 100)
-            status_text = "СТАБИЛИЗИРОВАН" if is_stabilized else "НЕ СТАБИЛИЗИРОВАН"
-            floor_status = font.render(
+            status_text = "✓ СТАБИЛИЗИРОВАН" if is_stabilized else "✗ НЕ СТАБИЛИЗИРОВАН"
+            floor_status = info_font.render(
                 f"Этаж {self.current_floor}: {status_text}",
                 True,
                 status_color
             )
-            self.screen.blit(floor_status, (10, 160))
+            self.screen.blit(floor_status, (10, y_info))
+            y_info += 25
             
             # Количество врагов
             alive_enemies = self.current_level.enemy_spawner.get_alive_count()
-            enemies_text = font.render(
-                f"Врагов: {alive_enemies}",
+            enemies_text = info_font.render(
+                f"👹 Врагов: {alive_enemies}",
                 True,
                 (255, 100, 100)
             )
-            self.screen.blit(enemies_text, (10, 185))
+            self.screen.blit(enemies_text, (10, y_info))
+        
+        # Подсказка F1 в правом верхнем углу
+        hint_font = pygame.font.Font(None, 22)
+        hint_text = hint_font.render(
+            "F1 - Справка",
+            True,
+            (255, 215, 0)
+        )
+        hint_x = self.width - hint_text.get_width() - 10
+        self.screen.blit(hint_text, (hint_x, 10))
+    
+    def _draw_hud_stat(self, x: int, y: int, label: str, current: int, maximum: int,
+                       bar_color: tuple, bg_color: tuple, label_font, value_font) -> None:
+        """
+        Отрисовка статистики с прогресс-баром в HUD
+        
+        Args:
+            x, y: Позиция
+            label: Название статистики
+            current: Текущее значение
+            maximum: Максимальное значение
+            bar_color: Цвет заполненной части бара
+            bg_color: Цвет фона бара
+            label_font: Шрифт для названия
+            value_font: Шрифт для значений
+        """
+        # Название
+        label_render = label_font.render(label, True, (200, 200, 200))
+        self.screen.blit(label_render, (x, y))
+        
+        # Значения
+        value_text = value_font.render(f"{current}/{maximum}", True, bar_color)
+        self.screen.blit(value_text, (x, y + 20))
+        
+        # Прогресс-бар
+        bar_width = 200
+        bar_height = 12
+        bar_y = y + 50
+        
+        # Фон бара
+        pygame.draw.rect(self.screen, bg_color, (x, bar_y, bar_width, bar_height))
+        
+        # Заполнение бара
+        if maximum > 0:
+            fill_width = int((current / maximum) * bar_width)
+            pygame.draw.rect(self.screen, bar_color, (x, bar_y, fill_width, bar_height))
+        
+        # Рамка бара
+        pygame.draw.rect(self.screen, (100, 100, 120), (x, bar_y, bar_width, bar_height), 1)
         
     def _render_exit_dialog(self) -> None:
         """Отрисовка диалога выхода"""
@@ -2077,6 +2306,92 @@ class Game:
             else:
                 self.attic.storage.slots.append(InventorySlot())
     
+    def _serialize_placed_chests(self) -> list:
+        """Сериализовать размещённые сундуки"""
+        from ..items.item import Item
+        
+        chests_data = []
+        for chest in self.attic.placed_chests:
+            # Сериализуем содержимое сундука
+            storage_data = []
+            for slot in chest["storage"].slots:
+                if slot.item:
+                    item_data = {
+                        "id": slot.item.id,
+                        "name": slot.item.name,
+                        "item_type": slot.item.item_type.value,
+                        "rarity": slot.item.rarity.value,
+                        "description": slot.item.description,
+                        "damage": slot.item.damage,
+                        "durability": slot.item.durability,
+                        "max_durability": slot.item.max_durability,
+                        "heal_amount": slot.item.heal_amount,
+                        "endurance_amount": slot.item.endurance_amount,
+                        "clarity_amount": slot.item.clarity_amount,
+                        "stackable": slot.item.stackable,
+                        "max_stack": slot.item.max_stack,
+                        "weight": slot.item.weight,
+                        "value": slot.item.value,
+                        "quantity": slot.quantity
+                    }
+                    storage_data.append(item_data)
+                else:
+                    storage_data.append(None)
+            
+            chests_data.append({
+                "x": chest["x"],
+                "y": chest["y"],
+                "storage": storage_data
+            })
+        
+        return chests_data
+    
+    def _deserialize_placed_chests(self, chests_data: list) -> None:
+        """Десериализовать размещённые сундуки"""
+        from ..items.item import Item, ItemType, ItemRarity
+        from ..items.inventory import InventorySlot
+        from ..world.storage import Storage
+        
+        if not chests_data:
+            return
+        
+        self.attic.placed_chests = []
+        for chest_data in chests_data:
+            # Создаём хранилище
+            storage = Storage(max_slots=20)
+            storage.slots = []
+            
+            # Восстанавливаем содержимое
+            for slot_data in chest_data["storage"]:
+                if slot_data:
+                    item = Item(
+                        id=slot_data["id"],
+                        name=slot_data["name"],
+                        item_type=ItemType(slot_data["item_type"]),
+                        rarity=ItemRarity(slot_data["rarity"]),
+                        description=slot_data["description"],
+                        damage=slot_data.get("damage", 0),
+                        durability=slot_data.get("durability", 100),
+                        max_durability=slot_data.get("max_durability", 100),
+                        heal_amount=slot_data.get("heal_amount", 0),
+                        endurance_amount=slot_data.get("endurance_amount", 0),
+                        clarity_amount=slot_data.get("clarity_amount", 0),
+                        stackable=slot_data.get("stackable", False),
+                        max_stack=slot_data.get("max_stack", 1),
+                        weight=slot_data.get("weight", 1.0),
+                        value=slot_data.get("value", 0)
+                    )
+                    storage.slots.append(InventorySlot(item, slot_data["quantity"]))
+                else:
+                    storage.slots.append(InventorySlot())
+            
+            # Добавляем сундук
+            self.attic.placed_chests.append({
+                "x": chest_data["x"],
+                "y": chest_data["y"],
+                "storage": storage
+            })
+    
     def _update_profile_metadata(self) -> None:
         """Обновить метаданные профиля"""
         if not self.current_profile:
@@ -2188,38 +2503,30 @@ class Game:
         from ..systems.abilities import AbilityType
         if ability.ability_type == AbilityType.PASSIVE:
             for stat_mod in ability.stat_modifiers:
-                # Создаём модификатор
-                from ..systems.modifiers import StatModifier, ModifierType
-                modifier = StatModifier(
-                    type=stat_mod.type,
-                    stat=stat_mod.stat,
-                    value=stat_mod.value
-                )
-                # Добавляем с источником = ID способности
-                self.modifier_manager.add_modifier(modifier, source=f"ability_{ability_id}")
-                print(f"   ➕ Модификатор: {stat_mod.stat} {'+' if stat_mod.value > 0 else ''}{stat_mod.value}")
+                # Модификаторы уже созданы правильно в ability_presets.py
+                # Просто добавляем их в менеджер
+                self.modifier_manager.add_modifier(stat_mod)
+                print(f"   ➕ Модификатор: {stat_mod.stat_name} {'+' if stat_mod.value > 0 else ''}{stat_mod.value}")
             
             # Пересчитываем характеристики
             self._apply_all_modifiers()
     
     def _apply_all_modifiers(self) -> None:
         """Применить все модификаторы к характеристикам игрока"""
-        # Получаем финальные характеристики с учётом всех модификаторов
-        final_stats = self.modifier_manager.get_final_stats(self.player_stats)
-        
-        # Обновляем характеристики игрока (только бонусные, базовые не трогаем)
-        # Это нужно для отображения в UI
-        print(f"   📊 Финальные характеристики применены")
+        # Модификаторы применяются автоматически через ModifierManager
+        # при вызове calculate_modified_value() в UI
+        print(f"   📊 Модификаторы обновлены (всего: {len(self.modifier_manager.modifiers)})")
     
     def _apply_ability_modifiers(self) -> None:
         """Применить модификаторы от всех разблокированных способностей"""
         from ..systems.abilities import AbilityType
+        from ..systems.modifiers import StatModifier, ModifierSource
         
         # Очищаем старые модификаторы от способностей
-        sources_to_remove = [source for source in self.modifier_manager.modifiers.keys() 
-                            if source.startswith("ability_")]
-        for source in sources_to_remove:
-            self.modifier_manager.remove_modifiers_by_source(source)
+        modifiers_to_remove = [m for m in self.modifier_manager.modifiers 
+                              if m.source_id.startswith("ability_")]
+        for modifier in modifiers_to_remove:
+            self.modifier_manager.remove_modifier(modifier.source_id)
         
         # Применяем модификаторы от всех разблокированных пассивных способностей
         unlocked_count = 0
@@ -2227,18 +2534,14 @@ class Game:
             ability = self.ability_tree.abilities.get(ability_id)
             if ability and ability.ability_type == AbilityType.PASSIVE:
                 for stat_mod in ability.stat_modifiers:
-                    from ..systems.modifiers import StatModifier
-                    modifier = StatModifier(
-                        type=stat_mod.type,
-                        stat=stat_mod.stat,
-                        value=stat_mod.value
-                    )
-                    self.modifier_manager.add_modifier(modifier, source=f"ability_{ability_id}")
+                    # Модификаторы уже созданы правильно в ability_presets.py
+                    self.modifier_manager.add_modifier(stat_mod)
                     unlocked_count += 1
         
         if unlocked_count > 0:
             print(f"   ✨ Применено модификаторов от способностей: {unlocked_count}")
             self._apply_all_modifiers()
+        
     
     # Колбэки для меню настроек
     def _on_music_toggle(self, enabled: bool) -> None:

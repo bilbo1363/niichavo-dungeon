@@ -51,7 +51,8 @@ class StationUpgradeUI:
     """UI для улучшения станций"""
     
     def __init__(self, screen: pygame.Surface, station_manager: StationManager,
-                 player_level: int, player_inventory: Dict[str, int], player_money: int):
+                 player_level: int, player_inventory: Dict[str, int], player_money: int,
+                 crafting_system=None):
         """
         Инициализация UI
         
@@ -64,9 +65,17 @@ class StationUpgradeUI:
         """
         self.screen = screen
         self.station_manager = station_manager
+        self.crafting_system = crafting_system
         self.player_level = player_level
         self.player_inventory = player_inventory
         self.player_money = player_money
+        
+        # Очередь скрафченных предметов
+        self.crafted_queue = []
+        
+        # Кэш базы данных предметов (создаём ОДИН РАЗ!)
+        from ..items.item import ItemDatabase
+        self.item_db = ItemDatabase()
         
         # Размеры и позиции
         self.width = screen.get_width() - 100
@@ -81,6 +90,8 @@ class StationUpgradeUI:
         # Состояние UI
         self.selected_station: Optional[CraftingStation] = None
         self.hovered_card: Optional[str] = None
+        self.view_mode = "recipes"  # "recipes" или "upgrade"
+        self.selected_recipe = None
         self.show_upgrade_panel = False
         
         # Анимация улучшения
@@ -222,6 +233,54 @@ class StationUpgradeUI:
             max_rect = max_surf.get_rect(centerx=rect.centerx, bottom=rect.bottom - 10)
             self.screen.blit(max_surf, max_rect)
     
+    def _draw_inventory_panel(self):
+        """Отрисовать панель инвентаря"""
+        # Позиция справа от панели рецептов
+        panel_x = self.x + 250 + (self.width - 270) // 2 + 20
+        panel_y = self.y + 80
+        panel_width = (self.width - 270) // 2 - 40
+        panel_height = self.height - 120
+        
+        # Фон панели
+        pygame.draw.rect(self.screen, COLORS['panel'], 
+                        (panel_x, panel_y, panel_width, panel_height), border_radius=10)
+        pygame.draw.rect(self.screen, COLORS['border'], 
+                        (panel_x, panel_y, panel_width, panel_height), 2, border_radius=10)
+        
+        # Заголовок
+        title_text = "Инвентарь"
+        title_surf = self.font_normal.render(title_text, True, COLORS['text'])
+        self.screen.blit(title_surf, (panel_x + 20, panel_y + 15))
+        
+        # Список предметов
+        y_offset = panel_y + 60
+        
+        if not self.player_inventory:
+            no_items_text = "Инвентарь пуст"
+            no_items_surf = self.font_small.render(no_items_text, True, COLORS['text_dim'])
+            self.screen.blit(no_items_surf, (panel_x + 20, y_offset))
+            return
+        
+        # Отображаем предметы (используем кэшированную базу)
+        for item_id, quantity in sorted(self.player_inventory.items()):
+            item = self.item_db.get_item(item_id)
+            if not item:
+                continue
+            
+            # Имя предмета
+            item_text = f"{item.name} x{quantity}"
+            item_surf = self.font_small.render(item_text, True, COLORS['text'])
+            self.screen.blit(item_surf, (panel_x + 20, y_offset))
+            
+            y_offset += 30
+            
+            # Ограничение по высоте
+            if y_offset > panel_y + panel_height - 40:
+                more_text = "..."
+                more_surf = self.font_small.render(more_text, True, COLORS['text_dim'])
+                self.screen.blit(more_surf, (panel_x + 20, y_offset))
+                break
+    
     def _draw_upgrade_panel(self):
         """Нарисовать панель улучшения"""
         if not self.selected_station:
@@ -359,6 +418,106 @@ class StationUpgradeUI:
         self.upgrade_button_rect = upgrade_button_rect
         self.cancel_button_rect = cancel_button_rect
     
+    def _draw_recipes_panel(self):
+        """Отрисовать панель рецептов"""
+        if not self.crafting_system or not self.selected_station:
+            return
+        
+        # Получаем рецепты для текущей станции
+        station_recipes = []
+        for recipe_id, recipe in self.crafting_system.recipes.items():
+            if recipe.required_station == self.selected_station.id:
+                # Проверяем tier станции
+                if recipe.required_station_tier <= self.selected_station.current_tier:
+                    station_recipes.append(recipe)
+        
+        if not station_recipes:
+            # Нет рецептов
+            panel_x = self.x + 300
+            panel_y = self.y + 100
+            no_recipes_text = "Нет доступных рецептов"
+            no_recipes_surf = self.font_normal.render(no_recipes_text, True, COLORS['text_dim'])
+            self.screen.blit(no_recipes_surf, (panel_x, panel_y))
+            return
+        
+        # Панель рецептов (уменьшена для инвентаря)
+        panel_x = self.x + 250
+        panel_y = self.y + 80
+        panel_width = (self.width - 270) // 2  # Половина ширины
+        panel_height = self.height - 120
+        
+        pygame.draw.rect(self.screen, COLORS['panel'], 
+                        (panel_x, panel_y, panel_width, panel_height), border_radius=10)
+        pygame.draw.rect(self.screen, COLORS['border'], 
+                        (panel_x, panel_y, panel_width, panel_height), 2, border_radius=10)
+        
+        # Заголовок
+        title_text = f"Рецепты: {self.selected_station.name}"
+        title_surf = self.font_normal.render(title_text, True, COLORS['text'])
+        self.screen.blit(title_surf, (panel_x + 20, panel_y + 15))
+        
+        # Список рецептов (первые 5)
+        y_offset = panel_y + 60
+        self.recipe_rects = []  # Сохраняем для обработки кликов
+        
+        for i, recipe in enumerate(station_recipes[:5]):
+            # Проверяем наличие ингредиентов
+            has_ingredients = True
+            for item_id, count in recipe.ingredients.items():
+                if self.player_inventory.get(item_id, 0) < count:
+                    has_ingredients = False
+                    break
+            
+            # Фон рецепта
+            recipe_rect = pygame.Rect(panel_x + 15, y_offset, panel_width - 30, 70)
+            
+            # Подсветка выбранного рецепта
+            if self.selected_recipe and self.selected_recipe.id == recipe.id:
+                pygame.draw.rect(self.screen, (60, 80, 100), recipe_rect, border_radius=5)
+                pygame.draw.rect(self.screen, (100, 150, 200), recipe_rect, 2, border_radius=5)
+            else:
+                pygame.draw.rect(self.screen, COLORS['bg'], recipe_rect, border_radius=5)
+                border_color = (50, 200, 50) if has_ingredients else COLORS['border']
+                pygame.draw.rect(self.screen, border_color, recipe_rect, 1, border_radius=5)
+            
+            # Название рецепта
+            text_color = COLORS['text'] if has_ingredients else COLORS['text_dim']
+            name_surf = self.font_normal.render(recipe.name, True, text_color)
+            self.screen.blit(name_surf, (panel_x + 25, y_offset + 10))
+            
+            # Ингредиенты
+            ingredients_text = ", ".join([f"{count}x {item_id}" for item_id, count in recipe.ingredients.items()])
+            if len(ingredients_text) > 50:
+                ingredients_text = ingredients_text[:47] + "..."
+            ing_surf = self.font_small.render(ingredients_text, True, COLORS['text_dim'])
+            self.screen.blit(ing_surf, (panel_x + 25, y_offset + 35))
+            
+            # Сохраняем rect и рецепт для обработки кликов
+            self.recipe_rects.append((recipe_rect, recipe))
+            
+            y_offset += 80
+        
+        # Кнопка "Крафтить" если выбран рецепт
+        if self.selected_recipe:
+            # Проверяем наличие ингредиентов
+            can_craft = True
+            for item_id, count in self.selected_recipe.ingredients.items():
+                if self.player_inventory.get(item_id, 0) < count:
+                    can_craft = False
+                    break
+            
+            button_y = panel_y + panel_height - 60
+            self.craft_button_rect = pygame.Rect(panel_x + panel_width - 200, button_y, 180, 40)
+            
+            button_color = (50, 150, 50) if can_craft else (80, 80, 80)
+            pygame.draw.rect(self.screen, button_color, self.craft_button_rect, border_radius=5)
+            pygame.draw.rect(self.screen, COLORS['border'], self.craft_button_rect, 2, border_radius=5)
+            
+            button_text = "Крафтить" if can_craft else "Нет ресурсов"
+            button_surf = self.font_normal.render(button_text, True, COLORS['text'])
+            button_text_rect = button_surf.get_rect(center=self.craft_button_rect.center)
+            self.screen.blit(button_surf, button_text_rect)
+    
     def draw(self):
         """Отрисовать UI"""
         # Фон
@@ -382,12 +541,16 @@ class StationUpgradeUI:
         for card in self.cards:
             self._draw_station_card(card)
         
-        # Рисуем панель улучшения
-        if self.show_upgrade_panel:
-            self._draw_upgrade_panel()
+        # Рисуем панель в зависимости от режима
+        if self.selected_station:
+            if self.view_mode == "recipes":
+                self._draw_recipes_panel()
+                self._draw_inventory_panel()  # Добавлена панель инвентаря
+            elif self.show_upgrade_panel:
+                self._draw_upgrade_panel()
         
         # Подсказка
-        help_text = "ЛКМ - выбрать станцию | Колесо - прокрутка | ESC - закрыть"
+        help_text = "ЛКМ - выбрать | TAB - переключить режим | ESC - закрыть"
         help_surf = self.font_small.render(help_text, True, COLORS['text_dim'])
         help_rect = help_surf.get_rect(centerx=self.screen.get_width() // 2,
                                        bottom=self.y + self.height - 10)
@@ -403,7 +566,25 @@ class StationUpgradeUI:
         Returns:
             True если событие обработано
         """
-        if event.type == pygame.MOUSEMOTION:
+        if event.type == pygame.KEYDOWN:
+            # TAB - переключение между рецептами и улучшениями
+            if event.key == pygame.K_TAB and self.selected_station:
+                if self.view_mode == "recipes":
+                    self.view_mode = "upgrade"
+                    self.show_upgrade_panel = True
+                else:
+                    self.view_mode = "recipes"
+                    self.show_upgrade_panel = False
+                return True
+            
+            # ESC - закрыть панель
+            elif event.key == pygame.K_ESCAPE:
+                if self.selected_station:
+                    self.selected_station = None
+                    self.show_upgrade_panel = False
+                    return True
+        
+        elif event.type == pygame.MOUSEMOTION:
             mouse_pos = event.pos
             adjusted_pos = (mouse_pos[0], mouse_pos[1] + self.scroll_offset)
             
@@ -420,6 +601,18 @@ class StationUpgradeUI:
             if event.button == 1:  # ЛКМ
                 mouse_pos = event.pos
                 
+                # Проверяем клик по кнопке крафта
+                if self.view_mode == "recipes" and hasattr(self, 'craft_button_rect'):
+                    if self.craft_button_rect.collidepoint(mouse_pos):
+                        return self._try_craft()
+                
+                # Проверяем клик по рецептам
+                if self.view_mode == "recipes" and hasattr(self, 'recipe_rects'):
+                    for rect, recipe in self.recipe_rects:
+                        if rect.collidepoint(mouse_pos):
+                            self.selected_recipe = recipe
+                            return True
+                
                 # Если открыта панель улучшения
                 if self.show_upgrade_panel:
                     # Проверяем клик по кнопкам
@@ -430,13 +623,17 @@ class StationUpgradeUI:
                         self.show_upgrade_panel = False
                         self.selected_station = None
                         return True
-                else:
+                
+                # Проверяем клик по карточкам
+                if not self.selected_station:
                     # Проверяем клик по карточкам
                     adjusted_pos = (mouse_pos[0], mouse_pos[1] + self.scroll_offset)
                     for card in self.cards:
                         if card.contains_point(adjusted_pos):
                             self.selected_station = card.station
-                            self.show_upgrade_panel = True
+                            # По умолчанию показываем рецепты, а не улучшения
+                            self.view_mode = "recipes"
+                            self.show_upgrade_panel = False
                             return True
             
             elif event.button == 4:  # Колесо вверх
@@ -475,6 +672,62 @@ class StationUpgradeUI:
                 # Запускаем анимацию
                 self.upgrading_station = station.id
                 self.upgrade_animation_progress = 0.0
+    
+    def _try_craft(self) -> bool:
+        """
+        Попытаться скрафтить выбранный рецепт
+        
+        Returns:
+            True если крафт успешен
+        """
+        if not self.selected_recipe or not self.crafting_system:
+            return False
+        
+        recipe = self.selected_recipe
+        
+        # Проверяем наличие всех ингредиентов
+        for item_id, count in recipe.ingredients.items():
+            if self.player_inventory.get(item_id, 0) < count:
+                print(f"❌ Недостаточно {item_id}: нужно {count}, есть {self.player_inventory.get(item_id, 0)}")
+                return False
+        
+        # НЕ изменяем player_inventory здесь - это сделает game.py
+        # Просто сохраняем информацию о крафте
+        result_count = recipe.result_count
+        
+        print(f"✅ Скрафчено: {recipe.name} x{result_count}")
+        
+        # СРАЗУ обновляем словарь инвентаря в UI (вычитаем ингредиенты)
+        for item_id, count in recipe.ingredients.items():
+            if item_id in self.player_inventory:
+                self.player_inventory[item_id] -= count
+                if self.player_inventory[item_id] <= 0:
+                    del self.player_inventory[item_id]
+        
+        # СРАЗУ добавляем результат в словарь UI
+        if recipe.result_item in self.player_inventory:
+            self.player_inventory[recipe.result_item] += result_count
+        else:
+            self.player_inventory[recipe.result_item] = result_count
+        
+        # Добавляем в очередь крафтов
+        self.crafted_queue.append({
+            "recipe": recipe,
+            "result_item": recipe.result_item,
+            "result_count": result_count,
+            "ingredients": recipe.ingredients.copy()
+        })
+        
+        # Сбрасываем выбор рецепта
+        self.selected_recipe = None
+        
+        return True
+    
+    def get_and_clear_crafted(self):
+        """Получить и очистить информацию о последнем крафте"""
+        if self.crafted_queue:
+            return self.crafted_queue.pop(0)
+        return None
     
     def update(self, dt: float):
         """

@@ -42,8 +42,18 @@ class Attic:
         self.storage_pos: Optional[Tuple[int, int]] = None   # Хранилище
         self.spawn_pos: Optional[Tuple[int, int]] = None     # Точка появления игрока
         
+        # Позиции станций
+        self.workbench_pos: Optional[Tuple[int, int]] = None
+        self.laboratory_pos: Optional[Tuple[int, int]] = None
+        self.alchemy_pos: Optional[Tuple[int, int]] = None
+        self.magic_circle_pos: Optional[Tuple[int, int]] = None
+        self.terminal_pos: Optional[Tuple[int, int]] = None
+        
         # Хранилище (сундук)
         self.storage = Storage(max_slots=50)
+        
+        # Дополнительные размещённые сундуки
+        self.placed_chests: list[dict] = []  # [{"x": int, "y": int, "storage": Storage}, ...]
         
         # Генерируем чердак
         self._generate()
@@ -81,10 +91,27 @@ class Attic:
             for y in [5, self.height - 6]:
                 if 0 < x < self.width - 1 and 0 < y < self.height - 1:
                     self.tiles[y, x] = self.TILE_WALL
+        
+        # Размещаем станции
+        # Верстак (слева вверху)
+        self.workbench_pos = (3, 3)
+        # Лаборатория (справа вверху)
+        self.laboratory_pos = (self.width - 4, 3)
+        # Алхимический стол (слева внизу)
+        self.alchemy_pos = (3, self.height - 4)
+        # Магический круг (справа внизу)
+        self.magic_circle_pos = (self.width - 4, self.height - 4)
+        # Терминал АЛДАН (слева от входа)
+        self.terminal_pos = (entrance_x - 5, entrance_y)
                     
         print(f"   Вход в подземелье: {self.entrance_pos}")
         print(f"   Хранилище: {self.storage_pos}")
         print(f"   Точка появления: {self.spawn_pos}")
+        print(f"   🔧 Верстак: {self.workbench_pos}")
+        print(f"   🧪 Лаборатория: {self.laboratory_pos}")
+        print(f"   ⚗️ Алхимический стол: {self.alchemy_pos}")
+        print(f"   🔮 Магический круг: {self.magic_circle_pos}")
+        print(f"   💻 Терминал АЛДАН: {self.terminal_pos}")
         
     def is_walkable(self, x: int, y: int) -> bool:
         """
@@ -217,6 +244,104 @@ class Attic:
                 (screen_x + 16, screen_y + 16),
                 3
             )
+        
+        # Отрисовка станций
+        stations = [
+            (self.workbench_pos, (139, 69, 19), "🔧"),      # Коричневый верстак
+            (self.laboratory_pos, (200, 200, 200), "🧪"),   # Серая лаборатория
+            (self.alchemy_pos, (148, 0, 211), "⚗️"),        # Фиолетовый алхимический стол
+            (self.magic_circle_pos, (218, 112, 214), "🔮"), # Розовый магический круг
+            (self.terminal_pos, (70, 130, 180), "💻")       # Синий терминал
+        ]
+        
+        for pos, color, icon in stations:
+            if pos:
+                st_x, st_y = pos
+                screen_x = st_x * self.tile_size - camera_x
+                screen_y = st_y * self.tile_size - camera_y
+                
+                # Рисуем цветной квадрат
+                pygame.draw.rect(
+                    screen,
+                    color,
+                    (screen_x + 4, screen_y + 4, 24, 24)
+                )
+                # Рамка
+                pygame.draw.rect(
+                    screen,
+                    (255, 255, 255),
+                    (screen_x + 4, screen_y + 4, 24, 24),
+                    2
+                )
+        
+        # Отрисовка размещённых сундуков
+        for chest in self.placed_chests:
+            chest_x, chest_y = chest["x"], chest["y"]
+            screen_x = chest_x * self.tile_size - camera_x
+            screen_y = chest_y * self.tile_size - camera_y
+            
+            # Рисуем сундук (немного меньше основного)
+            pygame.draw.rect(
+                screen,
+                (101, 67, 33),
+                (screen_x + 8, screen_y + 12, 16, 12)
+            )
+            pygame.draw.rect(
+                screen,
+                (139, 90, 43),
+                (screen_x + 8, screen_y + 8, 16, 6)
+            )
+            # Замок
+            pygame.draw.circle(
+                screen,
+                (192, 192, 192),  # Серебряный замок
+                (screen_x + 16, screen_y + 16),
+                2
+            )
+    
+    def get_station_at(self, x: int, y: int) -> Optional[str]:
+        """Получить тип станции на позиции"""
+        if (x, y) == self.workbench_pos:
+            return "workbench"
+        elif (x, y) == self.laboratory_pos:
+            return "laboratory"
+        elif (x, y) == self.alchemy_pos:
+            return "alchemy_table"
+        elif (x, y) == self.magic_circle_pos:
+            return "magic_circle"
+        elif (x, y) == self.terminal_pos:
+            return "aldan_terminal"
+        return None
+    
+    def can_place_chest(self, x: int, y: int) -> bool:
+        """Проверить можно ли разместить сундук"""
+        if x < 0 or x >= self.width or y < 0 or y >= self.height:
+            return False
+        if not self.is_walkable(x, y):
+            return False
+        if (x, y) in [self.entrance_pos, self.storage_pos, self.workbench_pos,
+                      self.laboratory_pos, self.alchemy_pos, self.magic_circle_pos, self.terminal_pos]:
+            return False
+        for chest in self.placed_chests:
+            if chest["x"] == x and chest["y"] == y:
+                return False
+        return True
+    
+    def place_chest(self, x: int, y: int) -> bool:
+        """Разместить сундук"""
+        if not self.can_place_chest(x, y):
+            return False
+        chest = {"x": x, "y": y, "storage": Storage(max_slots=20)}
+        self.placed_chests.append(chest)
+        print(f"📦 Сундук размещён на ({x}, {y})")
+        return True
+    
+    def get_chest_at(self, x: int, y: int) -> Optional[dict]:
+        """Получить сундук на позиции"""
+        for chest in self.placed_chests:
+            if chest["x"] == x and chest["y"] == y:
+                return chest
+        return None
 
 
 if __name__ == "__main__":
